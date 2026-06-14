@@ -58,13 +58,10 @@ echo   HECHO. Resumen del ultimo commit:
 echo ============================================
 git show --stat HEAD
 echo.
-echo ============================================
-echo   Recuerda: para generar una nueva version
-echo   de la app (APK + auto-update), ve a:
-echo   https://github.com/dskmusic/dsk-lofi/actions
-echo   y lanza "Check NewPipeExtractor and Release"
-echo   marcando "force_build" si quieres forzarlo.
-echo ============================================
+
+set /p OPENACT="Abrir GitHub Actions para lanzar el build? (S/N): "
+if /i "%OPENACT%"=="S" start "" "https://github.com/dskmusic/dsk-lofi/actions/workflows/check-newpipe.yml"
+
 echo.
 pause
 del "%TEMP%\dsklofi_status.txt" 2>nul
