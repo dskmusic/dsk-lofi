@@ -1,0 +1,193 @@
+/* =============================================================================
+   DSK•LoFi — library.css
+   Estilos de la biblioteca: pestañas dentro de #plFs, explorador, listas,
+   filas, menú de acciones (⋮) y botón ⋮ por pista. Hereda tokens de tokens.css.
+   ========================================================================== */
+
+/* ---- botón ⋮ dentro de cada .pl-item (cola / fullscreen / mini) ---- */
+.pl-item { position: relative; }
+.pl-item__menu {
+  flex: none;
+  width: 34px; height: 34px; margin: -6px -4px -6px 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-faint);
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.pl-item__menu .ic { width: 18px; height: 18px; }
+.pl-item__menu:hover, .pl-item__menu:active { background: var(--acc-dim); color: var(--acc); }
+
+/* ============================ PESTAÑAS ============================ */
+.lib-tabs {
+  display: flex; gap: var(--space-1);
+  padding: var(--space-2) var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+.lib-tab {
+  flex: 1;
+  padding: var(--space-3) var(--space-2);
+  font-family: var(--font-display); font-size: var(--fs-micro);
+  letter-spacing: var(--ls-label); text-transform: uppercase;
+  color: var(--color-text-faint);
+  border-bottom: 2px solid transparent;
+  transition: color var(--dur-fast), border-color var(--dur-fast);
+}
+.lib-tab[hidden] { display: none; }
+.lib-tab--active { color: var(--acc); border-bottom-color: var(--acc); text-shadow: var(--glow-acc); }
+
+/* ============================ PANELES ============================ */
+.lib-panel { display: none; }
+.lib-panel--active {
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0;
+}
+.lib-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.lib-view[hidden] { display: none; }
+
+/* barra superior (explorador / listas) */
+.lib-bar {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.lib-up {
+  flex: none; width: 36px; height: 36px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised); color: var(--color-text);
+}
+.lib-up[hidden] { display: none; }
+.lib-up .ic { width: 18px; height: 18px; }
+.lib-path {
+  flex: 1; min-width: 0;
+  font-size: var(--fs-small); font-weight: var(--fw-semi);
+  letter-spacing: var(--ls-label); text-transform: uppercase;
+  color: var(--color-text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lib-add {
+  flex: none;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-display); font-size: var(--fs-micro);
+  letter-spacing: var(--ls-label); text-transform: uppercase;
+  border-radius: var(--radius-pill);
+  background: var(--acc); color: var(--acc-ink);
+  box-shadow: var(--btn-edge);
+}
+.lib-add--ghost { background: var(--color-surface-raised); color: var(--color-text); box-shadow: var(--shadow-inset); }
+.lib-add:active { transform: translateY(2px); box-shadow: var(--btn-edge-press); }
+
+/* lista de filas (explorador / listas / detalle) */
+.lib-list {
+  flex: 1; overflow-y: auto;
+  padding: var(--space-2) var(--space-3) calc(var(--space-4) + env(safe-area-inset-bottom));
+}
+.lib-empty {
+  padding: var(--space-8) var(--space-5);
+  text-align: center; color: var(--color-text-faint);
+  font-size: var(--fs-small); text-wrap: pretty;
+}
+
+/* fila genérica */
+.lib-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-4) var(--space-3);
+  text-align: left; cursor: pointer;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+  transition: background var(--dur-fast);
+}
+.lib-row:hover { background: var(--acc-faint); }
+.lib-row__ic { flex: none; display: inline-flex; color: var(--color-text-faint); }
+.lib-row__ic .ic { width: 20px; height: 20px; }
+.lib-row--folder .lib-row__ic { color: var(--acc); }
+.lib-row__name {
+  flex: 1; min-width: 0;
+  font-size: var(--fs-base, 15px); color: var(--color-text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lib-row__sub { flex: none; font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--color-text-faint); }
+.lib-row__ord {
+  flex: none; width: 22px; text-align: right;
+  font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--color-text-faint);
+}
+.lib-row__act {
+  flex: none; width: 36px; height: 36px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-faint); font-size: 20px;
+}
+.lib-row__act .ic { width: 18px; height: 18px; }
+.lib-row__act:hover, .lib-row__act:active { background: var(--acc-dim); color: var(--acc); }
+.lib-row__mv {
+  flex: none; width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm); font-size: 12px;
+  color: var(--color-text-faint); background: var(--color-surface-raised);
+}
+.lib-row__mv:active { transform: scale(0.92); color: var(--acc); }
+
+/* pie del panel EN CURSO */
+.lib-foot {
+  flex: none;
+  padding: var(--space-3) var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-border);
+}
+
+/* ============================ MENÚ DE ACCIONES (⋮) ============================ */
+.menu-list { display: flex; flex-direction: column; gap: var(--space-1); text-align: left; }
+.menu-item {
+  display: block; width: 100%;
+  padding: var(--space-4) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-base, 15px); color: var(--color-text);
+  background: var(--color-surface);
+  transition: background var(--dur-fast);
+}
+.menu-item:hover, .menu-item:active { background: var(--acc-dim); }
+.menu-item--accent { color: var(--acc); font-weight: var(--fw-semi); }
+.menu-item--danger { color: var(--neon-red); }
+
+/* campo de nombre de lista a ancho completo */
+#listNameInput { width: 100%; }
+
+/* ---- capas: la lista fullscreen está en z-index 210; estos modales y los
+   toasts deben quedar POR ENCIMA al abrirse desde dentro de ella ---- */
+#trackMenuModal, #listPickModal, #listNameModal { z-index: 320; }
+.toasts { z-index: 400; }
+
+/* botón "cargar carpeta" en la pantalla de carga inicial */
+.loader__folder { margin-top: var(--space-4); }
+
+/* ---- carátula difuminada tras el visualizador ---- */
+.viz-cover {
+  position: absolute; inset: 0; z-index: 0;
+  width: 100%; height: 100%; object-fit: cover;
+  opacity: 0; transform: scale(1.18);
+  filter: blur(16px) saturate(1.15);
+  transition: opacity var(--dur-slow) var(--ease-out);
+  pointer-events: none;
+}
+.viz-cover.is-set { opacity: 0.22; }
+.deck__viz canvas { z-index: 1; }   /* viz/onda por encima de la carátula */
+
+/* toggle de carátula en el selector de visualizaciones */
+.viz-cover-toggle.is-on {
+  background: var(--acc); color: var(--acc-ink);
+  border-color: var(--acc); box-shadow: var(--glow-acc);
+}
+
+/* ---- cabecera de opciones: grupo ayuda + cerrar ---- */
+.modal__head-actions { display: flex; align-items: center; gap: var(--space-2); }
+
+/* ---- modal de ayuda ---- */
+#helpModal { z-index: 340; }
+.help-body { text-align: left; display: flex; flex-direction: column; gap: var(--space-3); }
+.help-body h4 {
+  margin: var(--space-3) 0 0;
+  font-family: var(--font-display); font-size: var(--fs-small);
+  letter-spacing: var(--ls-label); text-transform: uppercase; color: var(--acc);
+}
+.help-body p { margin: 0; font-size: var(--fs-small); color: var(--color-text-muted); line-height: var(--lh-body); text-wrap: pretty; }
+.help-body b { color: var(--color-text); font-weight: var(--fw-semi); }
