@@ -18,8 +18,17 @@ jobs:
       - name: Comprobar última versión de NewPipeExtractor
         id: newpipe
         run: |
-          LATEST=$(curl -s https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases/latest | jq -r '.tag_name')
-          CURRENT=$(grep '^newpipe' gradle/libs.versions.toml | sed -E 's/.*"(.*)"/\1/')
+          RESPONSE=$(curl -sf -H "Accept: application/vnd.github+json" https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases/latest)
+          if [ -z "$RESPONSE" ]; then
+            echo "Error: no se pudo consultar la API de GitHub" >&2
+            exit 1
+          fi
+          LATEST=$(echo "$RESPONSE" | jq -r '.tag_name // empty')
+          if [ -z "$LATEST" ]; then
+            echo "Error: respuesta sin tag_name: $RESPONSE" >&2
+            exit 1
+          fi
+          CURRENT=$(grep -E '^newpipe[[:space:]]*=' gradle/libs.versions.toml | sed -E 's/.*"([^"]*)".*/\1/')
           echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
           echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
           if [ "$LATEST" == "$CURRENT" ]; then
