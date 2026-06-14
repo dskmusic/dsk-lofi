@@ -120,7 +120,7 @@ jobs:
           git config user.email "actions@github.com"
           git add gradle/libs.versions.toml app/build.gradle.kts version.json
           git commit -m "chore: release v${{ steps.bump.outputs.name }} (NewPipeExtractor ${{ steps.newpipe.outputs.latest }})"
-          git pull --rebase origin main
+          git pull --rebase --autostash origin main
           git push
 
       - name: Crear Release con APK
