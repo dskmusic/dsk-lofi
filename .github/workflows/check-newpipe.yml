@@ -22,8 +22,10 @@ jobs:
 
       - name: Comprobar última versión de NewPipeExtractor
         id: newpipe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RESPONSE=$(curl -sf -H "Accept: application/vnd.github+json" https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases/latest)
+          RESPONSE=$(curl -sf -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases/latest)
           if [ -z "$RESPONSE" ]; then
             echo "Error: no se pudo consultar la API de GitHub" >&2
             exit 1
