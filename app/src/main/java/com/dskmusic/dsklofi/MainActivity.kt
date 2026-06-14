@@ -495,6 +495,7 @@ class MainActivity : Activity() {
         ytBridge = YoutubeBridge(this)
         webView.addJavascriptInterface(ytBridge, "DSKYoutube")
         webView.addJavascriptInterface(DownloadsBridge(), "DSKDownloads")
+        webView.addJavascriptInterface(UpdateChecker(this), "DSKUpdate")
     }
 
     private fun injectFileInputFix() {

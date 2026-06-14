@@ -2713,7 +2713,95 @@
 
     $("#bridgeMode").textContent = Bridge.native ? "ANDROID · /DSKlofi" : "WEB · PWA";
     $("#appVersion").textContent = "v" + VERSION;
+
+    initUpdateChecker();
   }
+
+  /* ---------------------- DSK•LoFi — Auto-update ---------------------- */
+  const native_update = () =>
+    typeof window.DSKUpdate !== "undefined" &&
+    typeof window.DSKUpdate.checkUpdate === "function";
+
+  let upReqSeq = 0;
+  const upPending = {};
+
+  function installUpdateCallbacks() {
+    if (!native_update() || window.DSKUpdate.__cbReady) return;
+    window.DSKUpdate.__result = function (reqId, json) {
+      const p = upPending[reqId]; if (!p) return; delete upPending[reqId];
+      let obj = {}; try { obj = JSON.parse(json) || {}; } catch (e) {}
+      p.resolve(obj);
+    };
+    window.DSKUpdate.__error = function (reqId, code) {
+      const p = upPending[reqId]; if (!p) return; delete upPending[reqId];
+      p.reject(code || "network");
+    };
+    window.DSKUpdate.__installError = function (msg) {
+      const st = $("#updateStatus");
+      if (st) st.textContent = "Error al instalar: " + (msg || "");
+    };
+    window.DSKUpdate.__cbReady = true;
+  }
+
+  function checkUpdate() {
+    return new Promise((resolve, reject) => {
+      installUpdateCallbacks();
+      if (!native_update()) { reject("unsupported"); return; }
+      const reqId = "up" + (++upReqSeq) + "_" + Date.now();
+      const to = setTimeout(() => { if (upPending[reqId]) { delete upPending[reqId]; reject("timeout"); } }, 15000);
+      upPending[reqId] = {
+        resolve: (v) => { clearTimeout(to); resolve(v); },
+        reject: (e) => { clearTimeout(to); reject(e); }
+      };
+      try { window.DSKUpdate.checkUpdate(reqId); }
+      catch (e) { clearTimeout(to); delete upPending[reqId]; reject("network"); }
+    });
+  }
+
+  function initUpdateChecker() {
+    const btn = $("#btnCheckUpdate");
+    const st = $("#updateStatus");
+    if (!btn) return;
+
+    if (!native_update()) {
+      btn.style.display = "none";
+      return;
+    }
+
+    async function runCheck(showIdle) {
+      if (st) st.textContent = "Buscando actualizaciones…";
+      try {
+        const r = await checkUpdate();
+        if (r.update) {
+          if (st) {
+            st.innerHTML = "";
+            const span = document.createElement("span");
+            span.textContent = "Nueva versión disponible: " + (r.versionName || "");
+            const dl = document.createElement("button");
+            dl.className = "btn btn--accent btn--block";
+            dl.style.marginTop = "8px";
+            dl.textContent = "Descargar e instalar";
+            dl.addEventListener("click", () => {
+              if (st) st.textContent = "Descargando… revisa la notificación.";
+              window.DSKUpdate.downloadAndInstall(r.url);
+            });
+            st.appendChild(span);
+            st.appendChild(dl);
+          }
+          if (window.UI) UI.toast("Actualización disponible: " + (r.versionName || ""));
+        } else if (st) {
+          st.textContent = showIdle ? "Tienes la última versión." : "";
+        }
+      } catch (e) {
+        if (st && showIdle) st.textContent = "No se pudo comprobar.";
+      }
+    }
+
+    btn.addEventListener("click", () => runCheck(true));
+    // chequeo silencioso al arrancar
+    runCheck(false);
+  }
+
 
   /* text that isn't covered by data-i18n (state-dependent) */
   function refreshDynamicText() {
