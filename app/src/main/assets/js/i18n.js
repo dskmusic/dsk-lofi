@@ -103,6 +103,7 @@
         opt_norm: "AUTO-GAIN", opt_norm_sub: "Evens out the volume between tracks.",
         opt_norm_level: "TARGET LEVEL", opt_norm_soft: "SOFT", opt_norm_normal: "NORMAL", opt_norm_loud: "LOUD",
         opt_restore_sub: "All effects, theme and language back to factory.",
+        opt_check_update: "CHECK FOR UPDATES",
         opt_about: "DSK•LoFi — local lofi FX studio. No network, no tracking.",
 
         /* confirm */
@@ -260,6 +261,7 @@
         opt_norm: "AUTO-GANANCIA", opt_norm_sub: "Iguala el volumen entre pistas.",
         opt_norm_level: "NIVEL OBJETIVO", opt_norm_soft: "SUAVE", opt_norm_normal: "NORMAL", opt_norm_loud: "ALTO",
         opt_restore_sub: "Efectos, tema e idioma vuelven a fábrica.",
+        opt_check_update: "BUSCAR ACTUALIZACIONES",
         opt_about: "DSK•LoFi — estudio de FX lofi local. Sin red, sin rastreo.",
 
         cf_restore_title: "¿RESTAURAR VALORES?",
