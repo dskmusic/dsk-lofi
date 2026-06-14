@@ -1,0 +1,104 @@
+name: Check NewPipeExtractor & Release
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # diario 06:00 UTC
+  workflow_dispatch: {}     # permite lanzarlo a mano desde GitHub
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Comprobar última versión de NewPipeExtractor
+        id: newpipe
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases/latest | jq -r '.tag_name')
+          CURRENT=$(grep '^newpipe' gradle/libs.versions.toml | sed -E 's/.*"(.*)"/\1/')
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          if [ "$LATEST" == "$CURRENT" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Salir si no hay cambios
+        if: steps.newpipe.outputs.changed == 'false'
+        run: echo "NewPipeExtractor sin cambios (${{ steps.newpipe.outputs.current }}). Nada que hacer."
+
+      # --- A partir de aquí solo se ejecuta si hay versión nueva ---
+
+      - name: Actualizar libs.versions.toml
+        if: steps.newpipe.outputs.changed == 'true'
+        run: |
+          sed -i "s/^newpipe = .*/newpipe = \"${{ steps.newpipe.outputs.latest }}\"/" gradle/libs.versions.toml
+
+      - name: Subir versionCode y versionName
+        if: steps.newpipe.outputs.changed == 'true'
+        id: bump
+        run: |
+          CURRENT_CODE=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' app/build.gradle.kts)
+          NEW_CODE=$((CURRENT_CODE + 1))
+          sed -i "s/versionCode = $CURRENT_CODE/versionCode = $NEW_CODE/" app/build.gradle.kts
+
+          CURRENT_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
+          NEW_NAME="${CURRENT_NAME%.*}.$NEW_CODE"
+          sed -i "s/versionName = \"$CURRENT_NAME\"/versionName = \"$NEW_NAME\"/" app/build.gradle.kts
+
+          echo "code=$NEW_CODE" >> "$GITHUB_OUTPUT"
+          echo "name=$NEW_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 17
+        if: steps.newpipe.outputs.changed == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Decodificar keystore
+        if: steps.newpipe.outputs.changed == 'true'
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
+
+      - name: Compilar APK release firmado
+        if: steps.newpipe.outputs.changed == 'true'
+        run: |
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
+            -Pandroid.injected.signing.store.password="${{ secrets.KEYSTORE_PASSWORD }}" \
+            -Pandroid.injected.signing.key.alias="${{ secrets.KEY_ALIAS }}" \
+            -Pandroid.injected.signing.key.password="${{ secrets.KEY_PASSWORD }}"
+
+      - name: Generar version.json
+        if: steps.newpipe.outputs.changed == 'true'
+        run: |
+          cat > version.json <<EOF
+          {
+            "versionCode": ${{ steps.bump.outputs.code }},
+            "versionName": "${{ steps.bump.outputs.name }}",
+            "apkUrl": "https://github.com/${{ github.repository }}/releases/download/v${{ steps.bump.outputs.name }}/app-release.apk"
+          }
+          EOF
+
+      - name: Commit cambios (versiones)
+        if: steps.newpipe.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add gradle/libs.versions.toml app/build.gradle.kts version.json
+          git commit -m "chore: bump NewPipeExtractor to ${{ steps.newpipe.outputs.latest }}, versionCode ${{ steps.bump.outputs.code }}"
+          git push
+
+      - name: Crear Release con APK
+        if: steps.newpipe.outputs.changed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.bump.outputs.name }}
+          name: v${{ steps.bump.outputs.name }}
+          files: app/build/outputs/apk/release/app-release.apk
+          body: "Actualización automática de NewPipeExtractor a ${{ steps.newpipe.outputs.latest }}"
