@@ -59,6 +59,8 @@
       '<p>En el modo reproductor aparece un botón de <b>micrófono</b> (también dentro del modal de letras) que atenúa la voz centrada de la canción. Es aproximado: funciona mejor en pistas en estéreo.</p>' +
       '<h4>Exportar</h4>' +
       '<p>Renderiza la pista con los efectos aplicados a WAV o MP3. En la app se guarda en la carpeta <b>/DSKlofi</b>.</p>' +
+      '<h4>Identificar canción</h4>' +
+      '<p>Pulsa el icono de <b>micrófono</b> (abajo a la derecha del visualizador) para identificar la canción que esté sonando alrededor, tipo Shazam. Escucha 6 segundos y muestra carátula, título y artista. Desde el resultado puedes <b>buscar online</b> esa canción o <b>compartirla</b>. Necesitas configurar un token gratuito de <b>AudD.io</b> en Opciones.</p>' +
       '<h4>Más</h4>' +
       '<p>Temporizador de apagado, temas claro/oscuro, idioma y <b>modo reproductor</b> (sin efectos, arranque instantáneo) en Opciones.</p>',
     en:
@@ -80,6 +82,8 @@
       '<p>In player-only mode a <b>microphone</b> button appears (also inside the lyrics modal) that attenuates the song\'s centered vocal. It\'s approximate and works best on stereo tracks.</p>' +
       '<h4>Export</h4>' +
       '<p>Render the track with the applied effects to WAV or MP3. In the app it is saved to the <b>/DSKlofi</b> folder.</p>' +
+      '<h4>Identify song</h4>' +
+      '<p>Tap the <b>microphone</b> icon (bottom-right of the visualizer) to identify whatever song is playing nearby, Shazam-style. It listens for 6 seconds and shows the cover art, title and artist. From the result you can <b>search online</b> for that song or <b>share</b> it. You\'ll need to set a free <b>AudD.io</b> token in Options.</p>' +
       '<h4>More</h4>' +
       '<p>Sleep timer, light/dark themes, language and <b>player-only mode</b> (no effects, instant start) in Options.</p>'
   };

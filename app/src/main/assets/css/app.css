@@ -1141,6 +1141,7 @@
     }
     .theme-sw--active .theme-sw__dot { box-shadow: 0 0 0 2px var(--sw), 0 0 12px var(--sw); }
     .opt__sub { margin: 0; font-size: var(--fs-micro); color: var(--color-text-faint); text-align: center; }
+    .opt__sub a { color: var(--acc); text-decoration: underline; }
     .opt__about {
       margin: 0;
       font-size: var(--fs-micro);
