@@ -84,6 +84,10 @@ jobs:
         if: steps.newpipe.outputs.should_build == 'true'
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
 
+      - name: Dar permisos de ejecución a gradlew
+        if: steps.newpipe.outputs.should_build == 'true'
+        run: chmod +x gradlew
+
       - name: Compilar APK release firmado
         if: steps.newpipe.outputs.should_build == 'true'
         run: |
