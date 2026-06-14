@@ -36,20 +36,30 @@ jobs:
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
+          if [ -f version.json ]; then
+            echo "first_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "first_run=true" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "$LATEST" == "$CURRENT" ] && [ -f version.json ]; then
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Salir si no hay cambios
-        if: steps.newpipe.outputs.changed == 'false'
-        run: echo "NewPipeExtractor sin cambios (${{ steps.newpipe.outputs.current }}). Nada que hacer."
+        if: steps.newpipe.outputs.should_build == 'false'
+        run: echo "NewPipeExtractor sin cambios (${{ steps.newpipe.outputs.current }}) y version.json ya existe. Nada que hacer."
 
-      # --- A partir de aquí solo se ejecuta si hay versión nueva ---
+      # --- A partir de aquí solo se ejecuta si hay versión nueva o es la primera vez ---
 
       - name: Actualizar libs.versions.toml
-        if: steps.newpipe.outputs.changed == 'true'
+        if: steps.newpipe.outputs.should_build == 'true' && steps.newpipe.outputs.changed == 'true'
         run: |
           sed -i "s/^newpipe = \"[^\"]*\"/newpipe = \"${{ steps.newpipe.outputs.latest }}\"/" gradle/libs.versions.toml
 
       - name: Subir versionCode y versionName
-        if: steps.newpipe.outputs.changed == 'true'
+        if: steps.newpipe.outputs.should_build == 'true'
         id: bump
         run: |
           CURRENT_CODE=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' app/build.gradle.kts)
@@ -64,18 +74,18 @@ jobs:
           echo "name=$NEW_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK 17
-        if: steps.newpipe.outputs.changed == 'true'
+        if: steps.newpipe.outputs.should_build == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Decodificar keystore
-        if: steps.newpipe.outputs.changed == 'true'
+        if: steps.newpipe.outputs.should_build == 'true'
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
 
       - name: Compilar APK release firmado
-        if: steps.newpipe.outputs.changed == 'true'
+        if: steps.newpipe.outputs.should_build == 'true'
         run: |
           ./gradlew assembleRelease \
             -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
@@ -84,7 +94,7 @@ jobs:
             -Pandroid.injected.signing.key.password="${{ secrets.KEY_PASSWORD }}"
 
       - name: Generar version.json
-        if: steps.newpipe.outputs.changed == 'true'
+        if: steps.newpipe.outputs.should_build == 'true'
         run: |
           cat > version.json <<EOF
           {
@@ -95,19 +105,19 @@ jobs:
           EOF
 
       - name: Commit cambios (versiones)
-        if: steps.newpipe.outputs.changed == 'true'
+        if: steps.newpipe.outputs.should_build == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add gradle/libs.versions.toml app/build.gradle.kts version.json
-          git commit -m "chore: bump NewPipeExtractor to ${{ steps.newpipe.outputs.latest }}, versionCode ${{ steps.bump.outputs.code }}"
+          git commit -m "chore: release v${{ steps.bump.outputs.name }} (NewPipeExtractor ${{ steps.newpipe.outputs.latest }})"
           git push
 
       - name: Crear Release con APK
-        if: steps.newpipe.outputs.changed == 'true'
+        if: steps.newpipe.outputs.should_build == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.bump.outputs.name }}
           name: v${{ steps.bump.outputs.name }}
           files: app/build/outputs/apk/release/app-release.apk
-          body: "Actualización automática de NewPipeExtractor a ${{ steps.newpipe.outputs.latest }}"
+          body: "Release automática. NewPipeExtractor: ${{ steps.newpipe.outputs.latest }}"
