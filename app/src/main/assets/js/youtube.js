@@ -131,11 +131,49 @@
 
   function play(i) {
     const r = results[i]; if (!r || !window.DSKQueue) return;
-    DSKQueue.load([itemOf(r)], 0, { type: "online", name: "YouTube" });
+    const items = results.map(itemOf);
+    DSKQueue.load(items, i, { type: "online", name: "YouTube" });
   }
   function addToList(i) {
     const r = results[i]; if (!r) return;
-    if (window.DSKLists && DSKLists.add) DSKLists.add(itemOf(r));
+    openTrackMenu(r);
+  }
+
+  /* ---- menú de opciones (+): siguiente / cola / añadir a lista ---- */
+  function openTrackMenu(r) {
+    if (!window.UI) return;
+    const list = $("#trackMenuList");
+    if (!list) return;
+    list.innerHTML = "";
+
+    const opts = [
+      { key: "yt_play_next", action: () => {
+          if (window.DSKQueue && DSKQueue.enqueueNext) DSKQueue.enqueueNext([itemOf(r)]);
+          if (window.UI) UI.toast(t("yt_added_next"));
+        } },
+      { key: "yt_add_queue", action: () => {
+          if (window.DSKQueue && DSKQueue.enqueueLast) DSKQueue.enqueueLast([itemOf(r)]);
+          if (window.UI) UI.toast(t("yt_added_queue"));
+        } },
+      { key: "yt_add_playlist", action: () => {
+          if (window.DSKLists && DSKLists.add) DSKLists.add(itemOf(r));
+        } }
+    ];
+
+    opts.forEach((o) => {
+      const b = document.createElement("button");
+      b.className = "menu-item";
+      b.type = "button";
+      b.setAttribute("data-i18n", o.key);
+      b.textContent = t(o.key);
+      b.addEventListener("click", () => {
+        UI.closeModal("trackMenuModal");
+        o.action();
+      });
+      list.appendChild(b);
+    });
+
+    UI.openModal("trackMenuModal");
   }
   function sanitizeName(s) {
     return String(s == null ? "" : s).replace(/[\\/:*?"<>|\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
