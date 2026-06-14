@@ -26,9 +26,10 @@ Built by [DSK Music](https://dskmusic.com) — free tools for musicians since 20
 - Save full **projects** (`.dsk` files) — your tracks, effects, loops and settings, all in one file
 - Drag-and-drop reordering, quick search
 
-### 🌐 Online (YouTube)
-- Search YouTube directly from the app
+### 🌐 Online 
+- Search directly from the app
 - Stream audio-only, or download tracks straight to your library
+- Identify songs playing nearby and search them online instantly
 - Fast parallel downloads with MP3 conversion built in
 
 ### 🎤 Lyrics
