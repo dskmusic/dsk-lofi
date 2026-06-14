@@ -67,7 +67,7 @@
   }
 
   /* ============================ TOASTS ============================ */
-  function toast(msg, kind) {
+  function toast(msg, kind, duration) {
     const host = $("#toasts");
     const el = document.createElement("div");
     el.className = "toast" + (kind ? " toast--" + kind : "");
@@ -78,7 +78,7 @@
     setTimeout(() => {
       el.classList.remove("toast--in");
       setTimeout(() => el.remove(), 350);
-    }, 2400);
+    }, duration || 2400);
   }
 
   /* ============================ SLIDERS ============================ */

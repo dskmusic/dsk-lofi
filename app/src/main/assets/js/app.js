@@ -2788,7 +2788,7 @@
             st.appendChild(span);
             st.appendChild(dl);
           }
-          if (window.UI) UI.toast("Actualización disponible: " + (r.versionName || ""));
+          if (window.UI) UI.toast("Actualización disponible: " + (r.versionName || ""), null, 6000);
         } else if (st) {
           st.textContent = showIdle ? "Tienes la última versión." : "";
         }
