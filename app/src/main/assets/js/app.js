@@ -2914,8 +2914,202 @@
       navigator.serviceWorker.register("sw.js").catch(() => {});
     }
 
+    /* ============================ SHAZAM (AudD) ============================ */
+    initShazam();
+
     /* fundir la pantalla de carga: tras 'load' y un mínimo en pantalla */
     scheduleSplashHide();
+  }
+
+  /* ---- reconocimiento de canciones via AudD.io ---- */
+  function initShazam() {
+    const AUDD_LS = "dsklofi.audd_token";
+    const btn = $("#btnShazam");
+    if (!btn) return;
+
+    const elListening = $("#shListening");
+    const elSearching = $("#shSearching");
+    const elResult = $("#shResult");
+    const elError = $("#shError");
+    const elErrorMsg = $("#shErrorMsg");
+
+    const tokenInput = $("#auddToken");
+    const tokenSaveBtn = $("#auddTokenSave");
+    if (tokenInput) {
+      try { tokenInput.value = localStorage.getItem(AUDD_LS) || ""; } catch (e) {}
+    }
+    if (tokenSaveBtn) tokenSaveBtn.addEventListener("click", () => {
+      const v = (tokenInput.value || "").trim();
+      try { localStorage.setItem(AUDD_LS, v); } catch (e) {}
+      UI.toast(I18n.t("sh_token_saved"));
+    });
+
+    function getToken() {
+      try { return (localStorage.getItem(AUDD_LS) || "").trim(); } catch (e) { return ""; }
+    }
+
+    function showState(name) {
+      [elListening, elSearching, elResult, elError].forEach((el) => { if (el) el.hidden = true; });
+      const map = { listening: elListening, searching: elSearching, result: elResult, error: elError };
+      if (map[name]) map[name].hidden = false;
+    }
+
+    let lastResult = null;
+    let mediaStream = null;
+    let mediaRecorder = null;
+
+    btn.addEventListener("click", () => {
+      const token = getToken();
+      if (!token) {
+        UI.toast(I18n.t("sh_no_token"), "warn");
+        UI.openModal("optionsModal");
+        return;
+      }
+      lastResult = null;
+      showState("listening");
+      UI.openModal("shazamModal");
+      startListening(token);
+    });
+
+    function stopStream() {
+      if (mediaStream) {
+        try { mediaStream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+        mediaStream = null;
+      }
+      mediaRecorder = null;
+    }
+
+    async function startListening(token) {
+      let chunks = [];
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (e) {
+        showState("error");
+        elErrorMsg.textContent = I18n.t("sh_no_mic");
+        return;
+      }
+      let mime = "audio/webm";
+      if (window.MediaRecorder && !MediaRecorder.isTypeSupported(mime)) {
+        mime = MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "";
+      }
+      try {
+        mediaRecorder = mime ? new MediaRecorder(mediaStream, { mimeType: mime }) : new MediaRecorder(mediaStream);
+      } catch (e) {
+        mediaRecorder = new MediaRecorder(mediaStream);
+      }
+      mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+      mediaRecorder.onstop = () => {
+        const mt = mediaRecorder.mimeType || "audio/webm";
+        stopStream();
+        const blob = new Blob(chunks, { type: mt });
+        recognize(blob, token);
+      };
+      mediaRecorder.start();
+      const countdownEl = $("#shCountdown");
+      let secsLeft = 6;
+      if (countdownEl) countdownEl.textContent = secsLeft;
+      const countdownTimer = setInterval(() => {
+        secsLeft--;
+        if (countdownEl) countdownEl.textContent = Math.max(secsLeft, 0);
+        if (secsLeft <= 0) clearInterval(countdownTimer);
+      }, 1000);
+      setTimeout(() => {
+        clearInterval(countdownTimer);
+        if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+      }, 6000);
+    }
+
+    async function recognize(blob, token) {
+      showState("searching");
+      try {
+        const fd = new FormData();
+        fd.append("api_token", token);
+        fd.append("file", blob, "sample.webm");
+        fd.append("return", "apple_music,spotify");
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), 15000);
+        const res = await fetch("https://api.audd.io/", { method: "POST", body: fd, signal: ctrl.signal });
+        clearTimeout(to);
+        const data = await res.json();
+        if (data && data.status === "success" && data.result) {
+          showResult(data.result);
+        } else {
+          showState("error");
+          elErrorMsg.textContent = I18n.t("sh_notfound");
+        }
+      } catch (e) {
+        showState("error");
+        elErrorMsg.textContent = I18n.t("sh_error_generic");
+      }
+    }
+
+    function showResult(r) {
+      lastResult = r;
+      const title = r.title || "";
+      const artist = r.artist || "";
+      let cover = "";
+      try {
+        cover = (r.apple_music && r.apple_music.artwork && r.apple_music.artwork.url) ||
+                (r.spotify && r.spotify.album && r.spotify.album.images && r.spotify.album.images[0] && r.spotify.album.images[0].url) || "";
+        if (cover) cover = cover.replace("{w}", "300").replace("{h}", "300");
+      } catch (e) {}
+      $("#shTitle").textContent = title;
+      $("#shArtist").textContent = artist;
+      const img = $("#shCover");
+      if (cover) { img.src = cover; img.style.display = ""; } else { img.removeAttribute("src"); img.style.display = "none"; }
+      showState("result");
+    }
+
+    $("#shRetry").addEventListener("click", () => {
+      const token = getToken();
+      if (!token) { UI.openModal("optionsModal"); return; }
+      showState("listening");
+      startListening(token);
+    });
+
+    $("#shYoutube").addEventListener("click", () => {
+      if (!lastResult) return;
+      const q = ((lastResult.artist ? lastResult.artist + " " : "") + (lastResult.title || "")).trim();
+      UI.closeModal("shazamModal");
+      openPlFs();
+      const goOnline = () => {
+        const tabOnline = $("#libTabOnline");
+        if (tabOnline) tabOnline.click();
+        const input = $("#ytSearch");
+        if (input) {
+          input.value = q;
+          const go = $("#ytGo");
+          if (go) go.click();
+        }
+      };
+      requestAnimationFrame(goOnline);
+    });
+
+    $("#shShare").addEventListener("click", () => {
+      if (!lastResult) return;
+      const text = (I18n.t("sh_share_text") + ": " + (lastResult.artist ? lastResult.artist + " - " : "") + (lastResult.title || "")).trim();
+      if (window.DSKBridge && DSKBridge.shareText) {
+        try { DSKBridge.shareText(text); return; } catch (e) {}
+      }
+      if (navigator.share) {
+        navigator.share({ text }).catch(() => {});
+        return;
+      }
+      if (window.DSKBridge && DSKBridge.copyToClipboard) {
+        try { DSKBridge.copyToClipboard(text); UI.toast(I18n.t("copied")); return; } catch (e) {}
+      }
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        document.execCommand("copy"); ta.remove();
+        UI.toast(I18n.t("copied"));
+      } catch (e) {}
+    });
+
+    document.querySelectorAll('#shazamModal [data-close="shazamModal"]').forEach((el) => {
+      el.addEventListener("click", stopStream);
+    });
   }
 
   document.addEventListener("DOMContentLoaded", init);

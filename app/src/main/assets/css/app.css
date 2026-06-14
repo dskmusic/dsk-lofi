@@ -434,6 +434,41 @@
     .viz-lyric:hover { background: var(--acc-dim); }
     .viz-lyric:active { transform: scale(0.92); }
 
+    /* ---- botón SHAZAM (reconocimiento), abajo-derecha ---- */
+    .viz-shazam {
+      position: absolute; bottom: 8px; right: 8px; z-index: 3;
+      width: 32px; height: 32px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: var(--radius-sm);
+      background: color-mix(in srgb, var(--viz-bg) 70%, transparent);
+      color: var(--acc); box-shadow: var(--shadow-inset);
+      transition: transform var(--dur-fast) var(--ease-out), background var(--dur-fast);
+    }
+    .viz-shazam .ic { width: 16px; height: 16px; }
+    .viz-shazam:hover { background: var(--acc-dim); }
+    .viz-shazam:active { transform: scale(0.9); }
+
+    /* ============================ SHAZAM MODAL ============================ */
+    .sh-card { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding-top: var(--space-6); min-height: 260px; justify-content: center; position: relative; }
+    .sh-close { position: absolute; top: 8px; right: 8px; }
+    .sh-state { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); width: 100%; }
+    .sh-status { font-family: var(--font-display); letter-spacing: var(--ls-label); text-transform: uppercase; font-size: var(--fs-sm); color: var(--color-text-dim); }
+    .sh-pulse { position: relative; width: 88px; height: 88px; display: flex; align-items: center; justify-content: center; }
+    .sh-pulse__core { position: relative; z-index: 1; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--acc); color: var(--color-surface); box-shadow: var(--glow-acc); }
+    .sh-pulse__core .ic { width: 26px; height: 26px; }
+    .sh-pulse__ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--acc); opacity: 0; animation: sh-ping 1.8s ease-out infinite; }
+    .sh-pulse__ring--2 { animation-delay: 0.5s; }
+    .sh-pulse__ring--3 { animation-delay: 1s; }
+    @keyframes sh-ping { 0% { transform: scale(0.6); opacity: 0.7; } 80% { opacity: 0; } 100% { transform: scale(1.6); opacity: 0; } }
+    .sh-spinner { width: 32px; height: 32px; }
+    .sh-result__cover { width: 120px; height: 120px; border-radius: var(--radius-md); object-fit: cover; box-shadow: var(--shadow-inset); background: var(--viz-bg); }
+    .sh-result__title { font-family: var(--font-display); font-size: var(--fs-md); font-weight: 700; text-align: center; max-width: 90%; }
+    .sh-result__artist { font-size: var(--fs-sm); color: var(--color-text-dim); text-align: center; max-width: 90%; }
+    .sh-result__actions { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; margin-top: var(--space-2); }
+    .sh-act { display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .sh-act .ic { width: 18px; height: 18px; }
+    .sh-error__glyph { font-size: 40px; color: var(--color-text-dim); font-family: var(--font-display); }
+
     .deck__meta { cursor: pointer; }
 
     /* ============================ LYRICS MODAL ============================ */

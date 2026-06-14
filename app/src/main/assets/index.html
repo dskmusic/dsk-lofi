@@ -74,6 +74,7 @@
       <div class="deck__scan"></div>
       <button class="viz-mode" id="btnVizMode" type="button" aria-label="Visualizer mode"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
       <button class="viz-lyric" id="btnLyrics" type="button" data-i18n-aria="lyr_open"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg><span data-i18n="lyr_btn">LYRIC</span></button>
+      <button class="viz-shazam" id="btnShazam" type="button" data-i18n-aria="sh_open"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M5 11a7 7 0 0 0 14 0"></path><line x1="12" y1="18" x2="12" y2="22"></line><line x1="8" y1="22" x2="16" y2="22"></line></svg></button>
       <div class="deck__empty" id="vizEmpty">
         <span class="deck__empty-glyph">▮▮▮</span>
         <span data-i18n="no_file">NO TAPE LOADED</span>
@@ -338,6 +339,14 @@
     <div class="opt opt--restore">
       <button class="btn btn--ghost btn--block" id="btnRestore" type="button" data-i18n="opt_restore">RESTORE DEFAULTS</button>
       <p class="opt__sub" data-i18n="opt_restore_sub"></p>
+    </div>
+    <div class="opt">
+      <span class="param__label" data-i18n="sh_token_label">AUDD.IO API TOKEN</span>
+      <div class="timer-custom">
+        <input class="field" type="text" id="auddToken" spellcheck="false" autocomplete="off" data-i18n-ph="sh_token_ph">
+        <button class="btn btn--success" id="auddTokenSave" type="button" data-i18n="sh_token_save">SAVE</button>
+      </div>
+      <p class="opt__sub" data-i18n="sh_token_sub"></p>
     </div>
     <div class="opt opt--restore">
       <button class="btn btn--ghost btn--block" id="btnCheckUpdate" type="button" data-i18n="opt_check_update">BUSCAR ACTUALIZACIONES</button>
@@ -616,6 +625,49 @@
     <div class="lyr-actions" id="lyrActions" hidden="hidden">
       <button class="btn btn--ghost lyr-act" id="lyrShare" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"></line><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"></line></svg><span data-i18n="lyr_share">SHARE</span></button>
       <button class="btn btn--ghost lyr-act" id="lyrPdf" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M9 13h6M9 17h4"></path></svg><span data-i18n="lyr_pdf">PDF</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SHAZAM (RECONOCIMIENTO) MODAL ===================== -->
+<div class="modal" id="shazamModal" aria-hidden="true" role="dialog">
+  <div class="modal__scrim" data-close="shazamModal"></div>
+  <div class="modal__card modal__card--sm sh-card">
+    <button class="icon-btn modal__x sh-close" type="button" data-close="shazamModal"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+
+    <!-- estado: escuchando -->
+    <div class="sh-state" id="shListening">
+      <div class="sh-pulse">
+        <span class="sh-pulse__ring sh-pulse__ring--1"></span>
+        <span class="sh-pulse__ring sh-pulse__ring--2"></span>
+        <span class="sh-pulse__ring sh-pulse__ring--3"></span>
+        <span class="sh-pulse__core"><svg class="ic ic--lg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M5 11a7 7 0 0 0 14 0"></path><line x1="12" y1="18" x2="12" y2="22"></line><line x1="8" y1="22" x2="16" y2="22"></line></svg></span>
+      </div>
+      <p class="sh-status"><span data-i18n="sh_listening">LISTENING…</span> <span id="shCountdown">6</span></p>
+    </div>
+
+    <!-- estado: buscando -->
+    <div class="sh-state" id="shSearching" hidden="hidden">
+      <span class="spinner sh-spinner"></span>
+      <p class="sh-status" data-i18n="sh_searching">SEARCHING…</p>
+    </div>
+
+    <!-- estado: resultado -->
+    <div class="sh-state sh-result" id="shResult" hidden="hidden">
+      <img class="sh-result__cover" id="shCover" alt="">
+      <p class="sh-result__title" id="shTitle"></p>
+      <p class="sh-result__artist" id="shArtist"></p>
+      <div class="sh-result__actions">
+        <button class="btn btn--success sh-act" id="shYoutube" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3"></rect><polygon points="10 9 16 12 10 15" fill="currentColor" stroke="none"></polygon></svg><span data-i18n="sh_youtube">SEARCH ON YOUTUBE</span></button>
+        <button class="btn btn--ghost sh-act" id="shShare" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"></line><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"></line></svg><span data-i18n="sh_share">SHARE</span></button>
+      </div>
+    </div>
+
+    <!-- estado: sin resultados / error -->
+    <div class="sh-state" id="shError" hidden="hidden">
+      <span class="sh-error__glyph">♪?</span>
+      <p class="sh-status" id="shErrorMsg" data-i18n="sh_notfound">NO MATCH FOUND</p>
+      <button class="btn btn--ghost btn--block" id="shRetry" type="button" data-i18n="sh_retry">TRY AGAIN</button>
     </div>
   </div>
 </div>

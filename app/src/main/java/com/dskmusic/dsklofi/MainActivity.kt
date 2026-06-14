@@ -118,6 +118,9 @@ class MainActivity : Activity() {
 
         // Configurar WebView
         setupWebView()
+        if (0 != (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
 
         // Cargar la página desde assets
         webView.loadUrl("file:///android_asset/index.html")
