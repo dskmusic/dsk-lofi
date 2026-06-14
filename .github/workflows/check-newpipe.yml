@@ -28,7 +28,7 @@ jobs:
             echo "Error: respuesta sin tag_name: $RESPONSE" >&2
             exit 1
           fi
-          CURRENT=$(grep -E '^newpipe[[:space:]]*=' gradle/libs.versions.toml | sed -E 's/.*"([^"]*)".*/\1/')
+          CURRENT=$(grep -E '^newpipe[[:space:]]*=[[:space:]]*"' gradle/libs.versions.toml | head -n1 | sed -E 's/.*"([^"]*)".*/\1/')
           echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
           echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
           if [ "$LATEST" == "$CURRENT" ]; then
@@ -46,7 +46,7 @@ jobs:
       - name: Actualizar libs.versions.toml
         if: steps.newpipe.outputs.changed == 'true'
         run: |
-          sed -i "s/^newpipe = .*/newpipe = \"${{ steps.newpipe.outputs.latest }}\"/" gradle/libs.versions.toml
+          sed -i "s/^newpipe = \"[^\"]*\"/newpipe = \"${{ steps.newpipe.outputs.latest }}\"/" gradle/libs.versions.toml
 
       - name: Subir versionCode y versionName
         if: steps.newpipe.outputs.changed == 'true'
