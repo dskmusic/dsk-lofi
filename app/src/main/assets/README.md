@@ -5,7 +5,7 @@
 ```
 DSK-LoFi/
 ├── index.html              ← entrada única
-├── manifest.json           ← PWA
+├── manifest.json           ← PWA file 
 ├── sw.js                   ← service worker offline-first
 ├── css/  tokens.css, app.css
 ├── js/   i18n.js, bridge.js, encoder.js, engine.js, ui.js, app.js, lofi-worklet.js
