@@ -28,8 +28,7 @@ if not "%size%"=="0" (
     if errorlevel 1 (
         echo.
         echo ERROR al crear el commit.
-        pause
-        exit /b 1
+        goto :fin
     )
     echo.
 ) else (
@@ -39,14 +38,17 @@ if not "%size%"=="0" (
 
 echo [3/5] Descargando cambios remotos (git pull --rebase)...
 git pull --rebase
-if errorlevel 1 (
+set PULLERR=!errorlevel!
+if !PULLERR! NEQ 0 (
     echo.
-    echo ERROR / CONFLICTO al hacer pull --rebase.
-    echo Resuelve los conflictos, luego ejecuta:
+    echo AVISO: git pull --rebase devolvio codigo !PULLERR!.
+    echo Si hubo CONFLICTO, resuelvelo y luego:
     echo     git add -A ^&^& git rebase --continue
     echo (o cancela con: git rebase --abort)
-    pause
-    exit /b 1
+    echo.
+    set "SEGUIR=N"
+    set /p "SEGUIR=Continuar igualmente con el push? (s/N): "
+    if /i not "!SEGUIR!"=="S" goto :fin
 )
 echo.
 
@@ -55,8 +57,7 @@ git push
 if errorlevel 1 (
     echo.
     echo ERROR al hacer push.
-    pause
-    exit /b 1
+    goto :fin
 )
 
 echo.
@@ -66,6 +67,7 @@ echo ============================================
 git show --stat HEAD
 echo.
 
+:fin
 echo [5/5] GitHub Actions...
 set "OPENACT=N"
 set /p "OPENACT=Abrir GitHub Actions para lanzar nueva APK? (s/N): "
