@@ -99,7 +99,12 @@
     activeTab = tab;
     $$(".lib-tab").forEach((b) => b.classList.toggle("lib-tab--active", b.getAttribute("data-tab") === tab));
     $$(".lib-panel").forEach((p) => p.classList.toggle("lib-panel--active", p.getAttribute("data-panel") === tab));
-    if (tab === "explore") renderExplorer();
+    if (tab === "explore") {
+      if (explorerSearchActive()) runExplorerSearch(expSearchQuery);
+      else renderExplorer();
+    } else {
+      expSearchToken++; // detiene una búsqueda en curso al salir de la pestaña
+    }
     if (tab === "lists") renderLists();
   }
 
@@ -137,6 +142,7 @@
     if (ctx.kind === "queue") { DSKQueue.playAt(ctx.index); }
     else if (ctx.kind === "explorer") { playExplorerAudio(ctx.index); }
     else if (ctx.kind === "list") { playList(ctx.listId, ctx.index); }
+    else if (ctx.kind === "search") { if (ctx.onPlay) ctx.onPlay(); else DSKQueue.load([menuItem(ctx)], 0, { type: "folder", name: ctx.item.name }); }
   }
 
   /* elegir lista destino (o crear nueva) */
@@ -231,6 +237,122 @@
     step();
   }
 
+  /* ===================== BÚSQUEDA EN EXPLORADOR ===================== */
+  // Busca por nombre (carpetas y audios) en TODAS las raíces, recorriendo el
+  // árbol de forma incremental (una carpeta por "tick") para no bloquear el
+  // hilo de UI con árboles grandes. Resultados se pintan a medida que llegan.
+  let expSearchQuery = "";
+  let expSearchToken = 0;
+
+  function norm(s) {
+    return String(s == null ? "" : s)
+      .toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // quita acentos
+  }
+
+  function explorerSearchActive() { return expSearchQuery.trim().length > 0; }
+
+  function runExplorerSearch(query) {
+    expSearchQuery = query;
+    const list = $("#libExpItems");
+    const q = norm(query.trim());
+    if (!q) { renderExplorer(); return; }
+
+    const token = ++expSearchToken;
+    $("#libUp").hidden = true;
+    $("#libPath").textContent = T("ex_search_results");
+    list.innerHTML = "";
+    list.__renderToken = token;
+
+    let roots = [];
+    try { roots = JSON.parse(window.DSKBridge.listRoots() || "[]"); } catch (e) {}
+    if (!roots.length) { list.innerHTML = '<div class="lib-empty">' + T("ex_no_roots") + "</div>"; return; }
+
+    // cola BFS de carpetas pendientes: { uri, name }
+    const queue = roots.map((r) => ({ uri: r.uri, name: r.name }));
+    let found = 0;
+    const MAX_RESULTS = 200;
+    let firstBatch = true;
+
+    function step() {
+      if (expSearchToken !== token) return;          // cancelado (nueva búsqueda / cambio de vista)
+      if (!queue.length || found >= MAX_RESULTS) {
+        if (found === 0) {
+          list.innerHTML = '<div class="lib-empty">' + T("ex_search_empty") + "</div>";
+        }
+        return;
+      }
+      const folder = queue.shift();
+      let entries = [];
+      try { entries = JSON.parse(window.DSKBridge.browse(folder.uri) || "[]"); } catch (e) {}
+
+      const frag = document.createDocumentFragment();
+      entries.forEach((e) => {
+        if (e.dir) {
+          queue.push({ uri: e.uri, name: e.name });
+          if (norm(e.name).indexOf(q) !== -1 && found < MAX_RESULTS) {
+            found++;
+            frag.appendChild(searchFolderRow(e));
+          }
+        } else {
+          if (norm(e.name).indexOf(q) !== -1 && found < MAX_RESULTS) {
+            found++;
+            frag.appendChild(searchAudioRow(e, entries, folder.name));
+          }
+        }
+      });
+      if (frag.childNodes.length) {
+        if (firstBatch && list.querySelector(".lib-empty")) list.innerHTML = "";
+        firstBatch = false;
+        list.appendChild(frag);
+      }
+      if (queue.length && found < MAX_RESULTS) requestAnimationFrame(step);
+      else if (found === 0) list.innerHTML = '<div class="lib-empty">' + T("ex_search_empty") + "</div>";
+    }
+    step();
+  }
+
+  /* fila de carpeta encontrada: al tocarla, entra en esa carpeta y limpia la búsqueda */
+  function searchFolderRow(e) {
+    const row = document.createElement("div");
+    row.className = "lib-row lib-row--folder";
+    row.innerHTML = '<span class="lib-row__ic">' + IC.folder + '</span><span class="lib-row__name"></span>' +
+      '<button class="lib-row__act" type="button" aria-label="' + T("ex_play_folder") + '">' + IC.play + '</button>';
+    row.querySelector(".lib-row__name").textContent = e.name;
+    row.addEventListener("click", () => { clearExplorerSearch(); enterFolder(e.uri, e.name); });
+    row.querySelector(".lib-row__act").addEventListener("click", (ev) => { ev.stopPropagation(); clearExplorerSearch(); playFolderUri(e.uri, e.name); });
+    return row;
+  }
+  /* fila de audio encontrado: reproduce TODA la carpeta donde está, dejando la
+     cola posicionada en este archivo (igual que al abrir esa carpeta y tocarlo). */
+  function searchAudioRow(e, folderEntries, folderName) {
+    const row = document.createElement("div");
+    row.className = "lib-row lib-row--audio";
+    row.innerHTML = '<span class="lib-row__ic">' + IC.audio + '</span><span class="lib-row__name"></span>' +
+      '<button class="lib-row__act" type="button" aria-label="…">' + IC.dots + '</button>';
+    row.querySelector(".lib-row__name").textContent = stripExt(e.name);
+    const item = { name: e.name, uri: e.uri, path: e.path || null };
+    function playFolderFromHere() {
+      const audios = folderEntries.filter((x) => !x.dir);
+      const start = Math.max(0, audios.findIndex((a) => a.uri === e.uri));
+      const name = folderName || T("ex_search_results");
+      DSKQueue.load(audios.map((a) => ({ name: a.name, uri: a.uri, path: a.path || null })), start, { type: "folder", name: name });
+    }
+    row.addEventListener("click", playFolderFromHere);
+    row.querySelector(".lib-row__act").addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      openTrackMenu({ kind: "search", item: item, onPlay: playFolderFromHere });
+    });
+    return row;
+  }
+
+  function clearExplorerSearch() {
+    expSearchQuery = "";
+    expSearchToken++;
+    const inp = $("#libExpSearch"); if (inp) inp.value = "";
+    const clr = $("#libExpSearchClear"); if (clr) clr.hidden = true;
+  }
+
   function rootRow(r) {
     const row = document.createElement("div");
     row.className = "lib-row lib-row--folder";
@@ -269,6 +391,7 @@
   }
 
   function enterFolder(uri, name) {
+    expSearchToken++; // cancela cualquier búsqueda en curso
     let entries = [];
     try { entries = JSON.parse(window.DSKBridge.browse(uri) || "[]"); } catch (e) {}
     expStack.push({ uri: uri, name: name, entries: entries });
@@ -276,6 +399,7 @@
   }
   function explorerUp() {
     if (!expStack.length) return false;
+    expSearchToken++;
     expStack.pop();
     renderExplorer();
     return true;
@@ -526,6 +650,28 @@
     $$(".lib-tab").forEach((b) => b.addEventListener("click", () => setTab(b.getAttribute("data-tab"))));
     const up = $("#libUp"); if (up) up.addEventListener("click", explorerUp);
     const addRoot = $("#libAddRoot"); if (addRoot) addRoot.addEventListener("click", () => { if (hasBridge("addExplorerRoot")) window.DSKBridge.addExplorerRoot(); });
+
+    // buscador de archivos/carpetas (pestaña Archivos)
+    const expSearch = $("#libExpSearch"), expSearchClear = $("#libExpSearchClear");
+    if (expSearch) {
+      let debounceT = null;
+      expSearch.addEventListener("input", () => {
+        const v = expSearch.value || "";
+        if (expSearchClear) expSearchClear.hidden = !v;
+        clearTimeout(debounceT);
+        debounceT = setTimeout(() => runExplorerSearch(v), 180);
+      });
+      expSearch.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); expSearch.blur(); }
+      });
+    }
+    if (expSearchClear) {
+      expSearchClear.addEventListener("click", () => {
+        clearExplorerSearch();
+        renderExplorer();
+        if (expSearch) expSearch.focus();
+      });
+    }
     const sq = $("#libSaveQueue"); if (sq) sq.addEventListener("click", saveQueueAsList);
     const btnLibrary = $("#btnLibrary"); if (btnLibrary) btnLibrary.addEventListener("click", (e) => { e.stopPropagation(); DSKQueue.open(); setTab("lists"); });
     const nl = $("#libNewList"); if (nl) nl.addEventListener("click", () => askListName(null, (name) => { const lists = loadLists(); lists.push({ id: newId(), name: name, items: [] }); saveLists(lists); UI.toast(T("list_created")); renderLists(); }));
@@ -567,7 +713,8 @@
     function refreshActive() {
       if (!DSKQueue.isOpen()) return;
       if (activeTab === "explore") {
-        renderExplorer();
+        if (explorerSearchActive()) runExplorerSearch(expSearchQuery);
+        else renderExplorer();
       } else if (activeTab === "lists") {
         renderLists();
       }
