@@ -353,12 +353,18 @@
     const clr = $("#libExpSearchClear"); if (clr) clr.hidden = true;
   }
 
+  function trimRootName(name, max = 9) {
+    if (!name) return name;
+    return name.length > max ? name.slice(0, max) + "…" : name;
+  }
   function rootRow(r) {
     const row = document.createElement("div");
     row.className = "lib-row lib-row--folder";
     row.innerHTML = '<span class="lib-row__ic">' + IC.folder + '</span><span class="lib-row__name"></span>' +
       '<button class="lib-row__act" type="button" aria-label="' + T("ex_remove_root") + '">&times;</button>';
-    row.querySelector(".lib-row__name").textContent = r.name;
+    const nameEl = row.querySelector(".lib-row__name");
+    nameEl.textContent = trimRootName(r.name);
+    nameEl.title = r.name;
     row.addEventListener("click", () => enterFolder(r.uri, r.name));
     row.querySelector(".lib-row__act").addEventListener("click", (e) => {
       e.stopPropagation();
@@ -592,7 +598,7 @@
   /* ============================ MINI-LISTA: etiqueta de fuente ============================ */
   function sourceLabel(src) {
     if (!src || src.type === "none") return T("playlist");
-    if (src.name) return src.name;
+    if (src.name) return trimRootName(src.name);
     if (src.type === "folder") return T("src_folder");
     if (src.type === "list") return T("src_list");
     if (src.type === "file") return T("src_file");
@@ -601,7 +607,12 @@
   function applySource(detail) {
     const label = sourceLabel(detail && detail.source);
     const btn = $("#plTitleBtn");
-    if (btn) { const txt = btn.querySelector(".playlist__title-txt"); if (txt) txt.textContent = label; else btn.textContent = label; }
+    if (btn) {
+      const txt = btn.querySelector(".playlist__title-txt");
+      if (txt) txt.textContent = label; else btn.textContent = label;
+      const full = (detail && detail.source && detail.source.name) || label;
+      btn.title = full;
+    }
     // El título del modal de biblioteca queda fijo (BIBLIOTECA/LIBRARY); solo
     // la cabecera de la mini-cola muestra el nombre de la fuente.
   }
