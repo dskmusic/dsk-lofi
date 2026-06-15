@@ -2,8 +2,6 @@
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-set HUBO_CAMBIOS=0
-
 echo ============================================
 echo   DSK LoFi - Sincronizar con GitHub
 echo ============================================
@@ -15,7 +13,6 @@ for %%A in ("%TEMP%\dsklofi_status.txt") do set size=%%~zA
 del "%TEMP%\dsklofi_status.txt" 2>nul
 
 if not "%size%"=="0" (
-    set HUBO_CAMBIOS=1
     echo Archivos modificados:
     git status --short
     echo.
@@ -70,13 +67,9 @@ git show --stat HEAD
 echo.
 
 echo [5/5] GitHub Actions...
-if "%HUBO_CAMBIOS%"=="1" (
-    set OPENACT=N
-    set /p OPENACT="Se subieron cambios. Abrir GitHub Actions para lanzar nueva APK? (s/N): "
-    if /i "!OPENACT!"=="S" start "" "https://github.com/dskmusic/dsk-lofi/actions/workflows/check-newpipe.yml"
-) else (
-    echo No hubo cambios subidos, no se lanza build.
-)
+set "OPENACT=N"
+set /p "OPENACT=Abrir GitHub Actions para lanzar nueva APK? (s/N): "
+if /i "!OPENACT!"=="S" start "" "https://github.com/dskmusic/dsk-lofi/actions/workflows/check-newpipe.yml"
 
 echo.
 pause
