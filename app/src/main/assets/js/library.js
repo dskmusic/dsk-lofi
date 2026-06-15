@@ -34,7 +34,8 @@
     list: '<svg class="ic" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>',
     play: '<svg class="ic" viewBox="0 0 24 24"><polygon points="6 4 20 12 6 20"></polygon></svg>',
     dots: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="12" cy="19" r="1.6"></circle></svg>',
-    up: '<svg class="ic" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"></path></svg>'
+    up: '<svg class="ic" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"></path></svg>',
+    relink: '<svg class="ic" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><path d="M21 3v6h-6"></path></svg>'
   };
   const stripExt = (s) => (s || "").replace(/\.[^.]+$/, "");
 
@@ -269,7 +270,7 @@
     if (!roots.length) { list.innerHTML = '<div class="lib-empty">' + T("ex_no_roots") + "</div>"; return; }
 
     // cola BFS de carpetas pendientes: { uri, name }
-    const queue = roots.map((r) => ({ uri: r.uri, name: r.name }));
+    const queue = roots.filter((r) => !r.pending).map((r) => ({ uri: r.uri, name: r.name }));
     let found = 0;
     const MAX_RESULTS = 200;
     let firstBatch = true;
@@ -359,13 +360,20 @@
   }
   function rootRow(r) {
     const row = document.createElement("div");
-    row.className = "lib-row lib-row--folder";
-    row.innerHTML = '<span class="lib-row__ic">' + IC.folder + '</span><span class="lib-row__name"></span>' +
+    row.className = "lib-row lib-row--folder" + (r.pending ? " lib-row--pending" : "");
+    row.innerHTML = '<span class="lib-row__ic">' + (r.pending ? IC.relink : IC.folder) + '</span>' +
+      '<span class="lib-row__name"></span>' +
+      (r.pending ? '<span class="lib-row__sub lib-row__sub--pending">' + T("ex_pending") + '</span>' : '') +
       '<button class="lib-row__act" type="button" aria-label="' + T("ex_remove_root") + '">&times;</button>';
     const nameEl = row.querySelector(".lib-row__name");
     nameEl.textContent = trimRootName(r.name);
-    nameEl.title = r.name;
-    row.addEventListener("click", () => enterFolder(r.uri, r.name));
+    nameEl.title = r.pending ? (r.name + " — " + T("ex_pending_hint")) : r.name;
+    if (r.pending) {
+      row.title = T("ex_pending_hint");
+      row.addEventListener("click", () => { if (hasBridge("relinkRoot")) window.DSKBridge.relinkRoot(r.uri); });
+    } else {
+      row.addEventListener("click", () => enterFolder(r.uri, r.name));
+    }
     row.querySelector(".lib-row__act").addEventListener("click", (e) => {
       e.stopPropagation();
       if (hasBridge("removeRoot")) { window.DSKBridge.removeRoot(r.uri); UI.toast(T("ex_root_removed")); renderExplorer(); }

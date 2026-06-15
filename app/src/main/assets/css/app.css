@@ -1683,6 +1683,10 @@
     .lib-row__play:active { transform: scale(0.9); }
     .lib-row__ic .ic { width: 20px; height: 20px; }
     .lib-row--folder .lib-row__ic { color: var(--acc); }
+    .lib-row--pending { border: 1px dashed var(--neon-amber); }
+    .lib-row--pending .lib-row__ic { color: var(--neon-amber); }
+    .lib-row--pending .lib-row__name { color: var(--neon-amber); }
+    .lib-row__sub--pending { color: var(--neon-amber); }
     .lib-row__name {
       flex: 1; min-width: 0;
       font-size: var(--fs-base, 15px); color: var(--color-text-muted);

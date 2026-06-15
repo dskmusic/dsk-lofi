@@ -65,6 +65,10 @@ class MainActivity : Activity() {
     private val REQUEST_PICK_AUDIO = 200   // picker de audio → carga toda la carpeta
     private val REQUEST_PICK_TREE = 201    // picker de carpeta (SAF tree) → 100% fiable
     private val REQUEST_ADD_ROOT = 202     // añadir carpeta raíz al explorador (no toca la cola)
+    private val REQUEST_RELINK_ROOT = 203  // re-vincular carpeta pendiente tras importar configuración
+
+    // URI (string) de la carpeta pendiente que se está re-vinculando, o null
+    private var relinkPendingUri: String? = null
 
     // Playlist nativa: URIs de los audios de la carpeta del archivo elegido
     private var folderUris: List<Uri> = emptyList()
@@ -888,6 +892,16 @@ class MainActivity : Activity() {
             return
         }
 
+        if (requestCode == REQUEST_RELINK_ROOT) {
+            val old = relinkPendingUri; relinkPendingUri = null
+            if (resultCode == RESULT_OK && data?.data != null) {
+                addRoot(data.data!!)
+                if (old != null) savePendingRoots(loadPendingRoots().filter { it != old })
+                runOnUiThread { webView.evaluateJavascript("window.DSKRootsChanged && window.DSKRootsChanged();", null) }
+            }
+            return
+        }
+
         if (requestCode == REQUEST_SELECT_FILE) {
             val result = if (resultCode == RESULT_OK && data != null) {
                 data.data?.let { arrayOf(it) }
@@ -1213,7 +1227,7 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun listRoots(): String = rootsJson()
 
-        // Quita una raíz guardada y libera su permiso persistente.
+        // Quita una raíz guardada (o pendiente) y libera su permiso persistente.
         @JavascriptInterface
         fun removeRoot(uriString: String) {
             // Solo se quita de la lista de "Archivos". NO se libera el permiso
@@ -1221,6 +1235,7 @@ class MainActivity : Activity() {
             // apunten a archivos dentro de esa carpeta siguen abriéndose aunque
             // la carpeta ya no aparezca en Archivos.
             saveRoots(loadRoots().filter { it.toString() != uriString })
+            savePendingRoots(loadPendingRoots().filter { it != uriString })
         }
 
         // Hijos (carpetas + audios) de una carpeta del árbol como JSON [{name,uri,dir}].
@@ -1253,8 +1268,11 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun nameForUri(uriString: String): String = queryDisplayName(Uri.parse(uriString))
 
-        // Re-registra una carpeta raíz a partir de su URI (al importar listas).
+        // Re-registra una carpeta raíz a partir de su URI (al importar listas/config).
         // Devuelve true solo si la app tiene/obtiene permiso persistente de lectura.
+        // Si no hay permiso (p.ej. tras restaurar en otra instalación), la carpeta
+        // se guarda como "pendiente" para que aparezca en Archivos y el usuario
+        // pueda re-vincularla con relinkRoot().
         @JavascriptInterface
         fun addRootByUri(uriString: String): Boolean {
             return try {
@@ -1268,9 +1286,31 @@ class MainActivity : Activity() {
                     val cur = loadRoots().toMutableList()
                     if (cur.none { it.toString() == uri.toString() }) cur.add(uri)
                     saveRoots(cur)
+                    savePendingRoots(loadPendingRoots().filter { it != uriString })
                     true
-                } else false
+                } else {
+                    val pend = loadPendingRoots().toMutableList()
+                    if (pend.none { it == uriString } && loadRoots().none { it.toString() == uriString }) pend.add(uriString)
+                    savePendingRoots(pend)
+                    false
+                }
             } catch (e: Exception) { false }
+        }
+
+        // Abre el selector de carpeta para re-vincular una raíz pendiente (sin
+        // permiso). Al elegirla, se añade como raíz normal y se quita de pendientes.
+        @JavascriptInterface
+        fun relinkRoot(uriString: String) {
+            relinkPendingUri = uriString
+            runOnUiThread {
+                try {
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                    intent.putExtra("android.content.extra.SHOW_ADVANCED", true)
+                    startActivityForResult(intent, REQUEST_RELINK_ROOT)
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, "No se puede abrir el selector de carpeta", Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 
@@ -1488,6 +1528,26 @@ class MainActivity : Activity() {
         }
     } catch (e: Exception) { emptyList() }
 
+    // Carpetas raíz "pendientes": se conocían (vía import de config/listas) pero
+    // la app no tiene permiso de lectura sobre ellas en esta instalación. Se
+    // muestran en Archivos para que el usuario las re-vincule con relinkRoot().
+    private fun savePendingRoots(uris: List<String>) {
+        try {
+            val sp = getSharedPreferences("dsklofi", Context.MODE_PRIVATE)
+            val arr = org.json.JSONArray(); uris.forEach { arr.put(it) }
+            sp.edit().putString("explorerPendingRoots", arr.toString()).apply()
+        } catch (e: Exception) {}
+    }
+
+    private fun loadPendingRoots(): List<String> = try {
+        val raw = getSharedPreferences("dsklofi", Context.MODE_PRIVATE).getString("explorerPendingRoots", null)
+        if (raw == null) emptyList()
+        else {
+            val arr = org.json.JSONArray(raw)
+            (0 until arr.length()).map { arr.getString(it) }
+        }
+    } catch (e: Exception) { emptyList() }
+
     private fun addRoot(treeUri: Uri) {
         try {
             contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -1504,8 +1564,15 @@ class MainActivity : Activity() {
 
     private fun rootsJson(): String {
         val arr = org.json.JSONArray()
-        loadRoots().forEach { uri ->
-            arr.put(org.json.JSONObject().put("uri", uri.toString()).put("name", treeDisplayName(uri)).put("dir", true))
+        val granted = loadRoots()
+        granted.forEach { uri ->
+            arr.put(org.json.JSONObject().put("uri", uri.toString()).put("name", treeDisplayName(uri)).put("dir", true).put("pending", false))
+        }
+        val grantedSet = granted.map { it.toString() }.toSet()
+        loadPendingRoots().forEach { uriStr ->
+            if (uriStr !in grantedSet) {
+                arr.put(org.json.JSONObject().put("uri", uriStr).put("name", treeDisplayName(Uri.parse(uriStr))).put("dir", true).put("pending", true))
+            }
         }
         return arr.toString()
     }
