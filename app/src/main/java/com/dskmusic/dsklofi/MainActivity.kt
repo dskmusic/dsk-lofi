@@ -1041,6 +1041,56 @@ class MainActivity : Activity() {
             }
         }
 
+        // Comparte una imagen (base64 JPEG/PNG) vía el diálogo nativo del sistema.
+        @JavascriptInterface
+        fun shareImage(base64Data: String, filename: String) {
+            runOnUiThread {
+                try {
+                    val clean = if (base64Data.contains(",")) base64Data.substringAfter(",") else base64Data
+                    val bytes = Base64.decode(clean, Base64.DEFAULT)
+                    val mime = if (filename.endsWith(".png", ignoreCase = true)) "image/png" else "image/jpeg"
+                    // carpeta interna compartible vía FileProvider (no requiere permisos)
+                    val shareDir = File(getExternalFilesDir(null), "share").also { it.mkdirs() }
+                    val file = File(shareDir, filename)
+                    file.writeBytes(bytes)
+                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                        this@MainActivity, "${packageName}.fileprovider", file
+                    )
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = mime
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    val chooser = Intent.createChooser(send, "DSK•LoFi")
+                    chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    startActivity(chooser)
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, "No se pudo compartir la imagen: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        // Guarda una imagen (base64 JPEG/PNG) en /DSKlofi. Devuelve true si OK.
+        @JavascriptInterface
+        fun saveImage(base64Data: String, filename: String): Boolean {
+            return try {
+                val clean = if (base64Data.contains(",")) base64Data.substringAfter(",") else base64Data
+                val bytes = Base64.decode(clean, Base64.DEFAULT)
+                val mime = if (filename.endsWith(".png", ignoreCase = true)) "image/png" else "image/jpeg"
+                val safeName = DskStorage.sanitize(filename)
+                val saved = DskStorage.saveBytes(this@MainActivity, safeName, mime, bytes)
+                runOnUiThread {
+                    if (saved != null) Toast.makeText(this@MainActivity, "Guardado en DSKlofi: $saved", Toast.LENGTH_LONG).show()
+                    else Toast.makeText(this@MainActivity, "Error al guardar la imagen", Toast.LENGTH_SHORT).show()
+                }
+                saved != null
+            } catch (e: Exception) {
+                runOnUiThread { Toast.makeText(this@MainActivity, "Error al guardar: ${e.message}", Toast.LENGTH_SHORT).show() }
+                false
+            }
+        }
+
         // Genera un PDF (título grande arriba, intérprete debajo, letra y pie con
         // el enlace de la app) y lo guarda en Descargas como
         //   DSKlofi - <artista>_<titulo>.pdf

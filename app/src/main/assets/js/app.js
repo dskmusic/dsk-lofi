@@ -635,6 +635,8 @@
       img.classList.remove("is-set");
       if (!currentCoverB64) img.removeAttribute("src");
     }
+    // mostrar/ocultar botón de carátula
+    const btnAw = $("#btnArtwork"); if (btnAw) btnAw.hidden = !currentCoverB64;
   }
 
   function nativePicker() {
@@ -3045,11 +3047,93 @@
       navigator.serviceWorker.register("sw.js").catch(() => {});
     }
 
+    /* ============================ ARTWORK (CARÁTULA) ============================ */
+    initArtwork();
+
     /* ============================ SHAZAM (AudD) ============================ */
     initShazam();
 
     /* fundir la pantalla de carga: tras 'load' y un mínimo en pantalla */
     scheduleSplashHide();
+  }
+
+  /* ---- modal de carátula a pantalla completa ---- */
+  function initArtwork() {
+    const btn = $("#btnArtwork"); if (!btn) return;
+    const modal = $("#artworkModal");
+    const awImg = $("#awImg");
+    const awBg  = $("#awBg");
+    const awClose = $("#awClose");
+    const awSave  = $("#awSave");
+    const awShare = $("#awShare");
+    if (!modal || !awImg) return;
+
+    function hasBridgeFn(m) { return typeof window.DSKBridge !== "undefined" && typeof window.DSKBridge[m] === "function"; }
+
+    function openArtwork() {
+      if (!currentCoverB64) return;
+      const src = "data:image/jpeg;base64," + currentCoverB64;
+      awImg.src = src;
+      awBg.style.backgroundImage = "url(" + src + ")";
+      modal.setAttribute("aria-hidden", "false");
+      window.__dskBackStack.push(closeArtwork);
+    }
+    function closeArtwork() {
+      modal.setAttribute("aria-hidden", "true");
+      awImg.src = "";
+      awBg.style.backgroundImage = "";
+      // quitar del backstack si cierra con X
+      const stack = window.__dskBackStack;
+      const idx = stack.lastIndexOf(closeArtwork);
+      if (idx !== -1) stack.splice(idx, 1);
+    }
+
+    btn.addEventListener("click", openArtwork);
+    awClose.addEventListener("click", closeArtwork);
+    modal.addEventListener("click", (e) => { if (e.target === modal) closeArtwork(); });
+
+    // Guardar
+    awSave.addEventListener("click", () => {
+      if (!currentCoverB64) return;
+      const trackTitle = ($("#trackName .deck__name-txt") || {}).textContent || "cover";
+      const filename = "cover_" + trackTitle.replace(/[^a-z0-9]/gi, "_").slice(0, 40) + ".jpg";
+      if (hasBridgeFn("saveImage")) {
+        // el bridge muestra su propio toast nativo (éxito/fallo)
+        window.DSKBridge.saveImage(currentCoverB64, filename);
+      } else {
+        // web fallback
+        const a = document.createElement("a");
+        a.href = "data:image/jpeg;base64," + currentCoverB64;
+        a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        UI.toast(I18n.t("aw_saved"));
+      }
+    });
+
+    // Compartir
+    awShare.addEventListener("click", () => {
+      if (!currentCoverB64) return;
+      const trackTitle = ($("#trackName .deck__name-txt") || {}).textContent || "cover";
+      const filename = "cover_" + trackTitle.replace(/[^a-z0-9]/gi, "_").slice(0, 40) + ".jpg";
+      if (hasBridgeFn("shareImage")) {
+        window.DSKBridge.shareImage(currentCoverB64, filename);
+      } else if (navigator.share) {
+        // web share API (móviles modernos en browser)
+        fetch("data:image/jpeg;base64," + currentCoverB64)
+          .then((r) => r.blob())
+          .then((blob) => {
+            const file = new File([blob], filename, { type: "image/jpeg" });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              navigator.share({ files: [file] }).catch(() => {});
+            } else {
+              navigator.share({ title: trackTitle, url: window.location.href }).catch(() => {});
+            }
+          }).catch(() => {});
+      }
+    });
+
+    // ocultar opciones no disponibles en entorno sin bridge
+    // (en browser puro el <a download> y Web Share API cubren el caso)
   }
 
   /* ---- reconocimiento de canciones via AudD.io ---- */

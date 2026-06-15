@@ -75,6 +75,7 @@
       <button class="viz-mode" id="btnVizMode" type="button" aria-label="Visualizer mode"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
       <button class="viz-lyric" id="btnLyrics" type="button" data-i18n-aria="lyr_open"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg><span data-i18n="lyr_btn">LYRIC</span></button>
       <button class="viz-shazam" id="btnShazam" type="button" data-i18n-aria="sh_open"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M5 11a7 7 0 0 0 14 0"></path><line x1="12" y1="18" x2="12" y2="22"></line><line x1="8" y1="22" x2="16" y2="22"></line></svg></button>
+      <button class="viz-artwork" id="btnArtwork" type="button" data-i18n-aria="aw_open" hidden="hidden"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></button>
       <div class="deck__empty" id="vizEmpty">
         <span class="deck__empty-glyph">▮▮▮</span>
         <span data-i18n="no_file">NO TAPE LOADED</span>
@@ -700,6 +701,19 @@
 </div>
 
 <div id="toasts" class="toasts"></div>
+
+<!-- ===================== ARTWORK MODAL ===================== -->
+<div class="modal modal--artwork" id="artworkModal" aria-hidden="true" role="dialog">
+  <div class="aw-bg" id="awBg"></div>
+  <button class="aw-close icon-btn" id="awClose" type="button" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+  <div class="aw-wrap">
+    <img class="aw-img" id="awImg" alt="">
+  </div>
+  <div class="aw-actions">
+    <button class="btn btn--ghost" id="awSave" type="button" data-i18n="aw_save"></button>
+    <button class="btn btn--ghost" id="awShare" type="button" data-i18n="aw_share"></button>
+  </div>
+</div>
 
 <script src="js/i18n.js"></script>
 <script src="js/bridge.js"></script>

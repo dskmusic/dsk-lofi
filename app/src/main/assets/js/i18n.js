@@ -131,6 +131,9 @@
         theme_changed: "Theme updated",
         lang_changed: "Language updated",
 
+        /* artwork modal */
+        aw_open: "View artwork", aw_save: "SAVE IMAGE", aw_share: "SHARE", aw_saved: "Image saved",
+
         /* ---- library: sources / tabs / explorer / lists / track menu ---- */
         src_file: "Now playing", src_files: "Selection", src_folder: "Folder", src_list: "Playlist",
         tab_now: "QUEUE", tab_explore: "FILES", tab_lists: "PLAYLISTS",
@@ -325,6 +328,9 @@
         section_reset: "Sección restaurada",
         theme_changed: "Tema actualizado",
         lang_changed: "Idioma actualizado",
+
+        /* artwork modal */
+        aw_open: "Ver carátula", aw_save: "GUARDAR IMAGEN", aw_share: "COMPARTIR", aw_saved: "Imagen guardada",
 
         /* ---- biblioteca: fuentes / pestañas / explorador / listas / menú ---- */
         src_file: "En curso", src_files: "Selección", src_folder: "Carpeta", src_list: "Lista",
