@@ -17,6 +17,7 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }   // NewPipeExtractor
+        maven { url = uri("https://maven.aliyun.com/repository/jitpack") }   // espejo de respaldo si JitPack da 403
     }
 }
 

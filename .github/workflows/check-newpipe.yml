@@ -98,11 +98,17 @@ jobs:
       - name: Compilar APK release firmado
         if: steps.newpipe.outputs.should_build == 'true'
         run: |
-          ./gradlew assembleRelease \
-            -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
-            -Pandroid.injected.signing.store.password="${{ secrets.KEYSTORE_PASSWORD }}" \
-            -Pandroid.injected.signing.key.alias="${{ secrets.KEY_ALIAS }}" \
-            -Pandroid.injected.signing.key.password="${{ secrets.KEY_PASSWORD }}"
+          for i in 1 2 3; do
+            ./gradlew assembleRelease \
+              -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
+              -Pandroid.injected.signing.store.password="${{ secrets.KEYSTORE_PASSWORD }}" \
+              -Pandroid.injected.signing.key.alias="${{ secrets.KEY_ALIAS }}" \
+              -Pandroid.injected.signing.key.password="${{ secrets.KEY_PASSWORD }}" \
+              && break
+            echo "Intento $i fallido, reintentando en 30s..."
+            sleep 30
+            if [ "$i" == "3" ]; then exit 1; fi
+          done
 
       - name: Generar version.json
         if: steps.newpipe.outputs.should_build == 'true'
