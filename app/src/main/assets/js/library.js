@@ -207,7 +207,28 @@
     $("#libPath").textContent = lvl.name;
     list.innerHTML = "";
     if (!lvl.entries.length) { list.innerHTML = '<div class="lib-empty">' + T("ex_empty") + "</div>"; return; }
-    lvl.entries.forEach((e, i) => list.appendChild(e.dir ? folderRow(e) : audioRow(e, i)));
+    renderEntriesChunked(list, lvl.entries);
+  }
+
+  /* Inserta filas en lotes vía requestAnimationFrame para no bloquear el hilo
+     principal cuando hay muchos archivos (evita el "congelado" al refrescar). */
+  function renderEntriesChunked(list, entries) {
+    const CHUNK = 40;
+    const token = {};
+    list.__renderToken = token;
+    let idx = 0;
+    function step() {
+      if (list.__renderToken !== token) return; // se reemplazó la vista, abortar
+      const frag = document.createDocumentFragment();
+      const end = Math.min(idx + CHUNK, entries.length);
+      for (; idx < end; idx++) {
+        const e = entries[idx];
+        frag.appendChild(e.dir ? folderRow(e) : audioRow(e, idx));
+      }
+      list.appendChild(frag);
+      if (idx < entries.length) requestAnimationFrame(step);
+    }
+    step();
   }
 
   function rootRow(r) {
@@ -539,17 +560,13 @@
     // API mínima para que la pestaña Online añada resultados a una lista
     window.DSKLists = { add: openListPick };
 
-    // Refresca la vista abierta al volver a la app (barato): re-escanea la carpeta
-    // del explorador (refleja archivos añadidos/borrados) y re-dibuja listas.
+    // Refresca la vista abierta al volver a la app: solo repinta con los datos
+    // que ya tenemos (sin re-escanear la carpeta, eso es lo que congelaba la
+    // UI con carpetas grandes). Las pistas que ya no existen se eliminan solas
+    // al intentarse reproducir (ver skipMissingTrack en app.js).
     function refreshActive() {
       if (!DSKQueue.isOpen()) return;
       if (activeTab === "explore") {
-        if (expStack.length) {
-          const lvl = expStack[expStack.length - 1];
-          let entries = [];
-          try { entries = JSON.parse(window.DSKBridge.browse(lvl.uri) || "[]"); } catch (e) {}
-          lvl.entries = entries;
-        }
         renderExplorer();
       } else if (activeTab === "lists") {
         renderLists();

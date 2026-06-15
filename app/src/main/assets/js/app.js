@@ -809,11 +809,27 @@
     if (!host) return;
     const q = plQuery.trim().toLowerCase();
     host.innerHTML = "";
-    let shown = 0;
+    host.__renderToken = {};
+    const token = host.__renderToken;
+
+    // 1) filtrar (barato incluso con cientos de elementos)
+    const visible = [];
     playlist.forEach((t, i) => {
       const display = t.name.replace(/\.[^.]+$/, "");
       if (q && display.toLowerCase().indexOf(q) === -1) return;
-      shown++;
+      visible.push({ i: i, display: display });
+    });
+
+    if (q && visible.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "pl-empty";
+      empty.textContent = I18n.t("pl_no_results");
+      host.appendChild(empty);
+      return;
+    }
+
+    function makeRow(entry) {
+      const i = entry.i, display = entry.display;
       const row = document.createElement("button");
       row.className = "pl-item" + (i === plIndex ? " pl-item--active" : "");
       row.type = "button";
@@ -825,7 +841,6 @@
       row.addEventListener("click", () => {
         plIndex = i; plQuery = ""; syncSearchUI(); renderPlaylist(); emitQueue();
         loadFile(playlist[i], true);
-        // llevar ambas listas a la pista recién elegida
         scrollToActive($("#playlistItems"), false);
         scrollToActive($("#plFsItems"), true);
       });
@@ -836,14 +851,41 @@
       };
       menuBtn.addEventListener("click", openMenu);
       menuBtn.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") openMenu(e); });
-      host.appendChild(row);
-    });
-    if (q && shown === 0) {
-      const empty = document.createElement("div");
-      empty.className = "pl-empty";
-      empty.textContent = I18n.t("pl_no_results");
-      host.appendChild(empty);
+      return row;
     }
+
+    // 2) primer lote SÍNCRONO alrededor de la pista activa, para que
+    //    scrollToActive() funcione de inmediato sin esperar al resto.
+    const FIRST = 60;
+    let activePos = visible.findIndex((e) => e.i === plIndex);
+    let startPos = 0;
+    if (activePos >= 0) startPos = Math.max(0, Math.min(activePos - Math.floor(FIRST / 2), Math.max(0, visible.length - FIRST)));
+    const firstEnd = Math.min(visible.length, startPos + FIRST);
+
+    const fragFirst = document.createDocumentFragment();
+    for (let k = startPos; k < firstEnd; k++) fragFirst.appendChild(makeRow(visible[k]));
+    host.appendChild(fragFirst);
+
+    // 3) resto en chunks (antes y después del bloque ya pintado)
+    let beforeIdx = startPos - 1;
+    let afterIdx = firstEnd;
+    const CHUNK = 60;
+    function step() {
+      if (host.__renderToken !== token) return;
+      let work = 0;
+      // después: añadir al final
+      while (afterIdx < visible.length && work < CHUNK) {
+        host.appendChild(makeRow(visible[afterIdx]));
+        afterIdx++; work++;
+      }
+      // antes: insertar al principio (orden inverso → insertBefore del primer hijo)
+      while (beforeIdx >= 0 && work < CHUNK * 2) {
+        host.insertBefore(makeRow(visible[beforeIdx]), host.firstChild);
+        beforeIdx--; work++;
+      }
+      if (afterIdx < visible.length || beforeIdx >= 0) requestAnimationFrame(step);
+    }
+    if (afterIdx < visible.length || beforeIdx >= 0) requestAnimationFrame(step);
   }
 
   // hace scroll a la pista activa dentro de su contenedor de forma aislada
@@ -1119,6 +1161,60 @@
     } catch (e) {}
   }
 
+  // El archivo de esta pista ya no existe en disco: la quitamos de la cola
+  // (y de las listas guardadas que la contengan) y saltamos a la siguiente,
+  // sin re-escanear nada. Evita el "congelado" al refrescar carpetas grandes.
+  function skipMissingTrack(track, autoplay) {
+    const isLocal = !!(track && (track.uri || track.path));
+    if (!isLocal) { UI.error(I18n.t("err_decode")); return; }
+
+    const i = playlist.indexOf(track);
+    if (i === -1) return; // ya se gestionó (p. ej. error duplicado del <audio>)
+
+    playlist.splice(i, 1);
+    try { removeFromSavedLists(track); } catch (e) {}
+
+    if (window.UI) UI.toast(I18n.t("file_missing_skipped"));
+
+    if (!playlist.length) {
+      plIndex = 0;
+      renderPlaylist(); emitQueue(); saveQueue();
+      document.body.classList.remove("has-track");
+      $("#loaderBusy").hidden = true; $("#waveBusy").hidden = true; $("#loaderIdle").hidden = false;
+      return;
+    }
+
+    if (i < plIndex) plIndex--;
+    else if (i === plIndex) {
+      if (plIndex >= playlist.length) plIndex = 0;
+      renderPlaylist(); emitQueue(); saveQueue();
+      loadFile(playlist[plIndex], autoplay);
+      return;
+    }
+    renderPlaylist(); emitQueue(); saveQueue();
+  }
+
+  // Quita una pista (por uri) de todas las playlists guardadas en localStorage,
+  // para que no vuelva a aparecer la próxima vez que se abra esa lista.
+  function removeFromSavedLists(track) {
+    if (!track || !track.uri || !window.localStorage) return;
+    const KEY = "dsklofi.playlists";
+    let lists;
+    try { lists = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { return; }
+    if (!Array.isArray(lists)) return;
+    let changed = false;
+    lists.forEach((l) => {
+      if (!l || !Array.isArray(l.items)) return;
+      const before = l.items.length;
+      l.items = l.items.filter((it) => !it || it.uri !== track.uri);
+      if (l.items.length !== before) changed = true;
+    });
+    if (changed) {
+      try { localStorage.setItem(KEY, JSON.stringify(lists)); } catch (e) {}
+      try { if (window.DSKLib && DSKLib.refresh) DSKLib.refresh(); } catch (e) {}
+    }
+  }
+
   async function loadFile(track, autoplay) {
     if (!track) return;
     // compat: si llega un File directo (web antiguo), envolverlo
@@ -1200,7 +1296,8 @@
         applyTrackNormNative(track.name, coverBlob);
         saveQueue();
       } catch (err) {
-        console.warn("native load failed", err); checkStorageOnFail(track);
+        console.warn("native load failed", err);
+        if (!checkStorageOnFail(track)) { skipMissingTrack(track, autoplay); return; }
       } finally {
         $("#loaderBusy").hidden = true; $("#waveBusy").hidden = true; $("#loaderIdle").hidden = false;
       }
@@ -1240,7 +1337,7 @@
       saveQueue();
     } catch (err) {
       console.warn("decode failed", err);
-      if (!checkStorageOnFail(track)) UI.error(I18n.t("err_decode"));
+      if (!checkStorageOnFail(track)) skipMissingTrack(track, autoplay);
     } finally {
       $("#loaderBusy").hidden = true;
       $("#waveBusy").hidden = true;
@@ -1368,29 +1465,10 @@
 
     // Quita de la cola los archivos locales que ya no existen (borrados fuera de
     // la app). Solo valida items con uri (YouTube/seleccionados no tienen) → barato.
-    function validateQueueFiles() {
-      if (!playlist.length) return;
-      if (!(window.DSKBridge && typeof DSKBridge.uriExists === "function")) return;
-      let removed = 0;
-      for (let i = playlist.length - 1; i >= 0; i--) {
-        const it = playlist[i];
-        if (!it || !it.uri) continue;
-        let ok = true;
-        try { ok = DSKBridge.uriExists(it.uri); } catch (e) { ok = true; }
-        if (!ok) {
-          playlist.splice(i, 1); removed++;
-          if (i < plIndex) plIndex--;
-          else if (i === plIndex && plIndex >= playlist.length) plIndex = Math.max(0, playlist.length - 1);
-        }
-      }
-      if (removed) { renderPlaylist(); saveQueue(); }
-    }
-
     // Al volver a la app (primer plano): refrescar las vistas abiertas (cola,
     // explorador, listas) por si cambió algo mientras estaba en segundo plano.
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState !== "visible") return;
-      try { validateQueueFiles(); } catch (e) {}
       try { renderPlaylist(); } catch (e) {}
       try { if (window.DSKLib && DSKLib.refresh) DSKLib.refresh(); } catch (e) {}
     });
@@ -2638,6 +2716,16 @@
       if (playlist.length > 1 && !Engine.loop) gotoNext(true);
       else if (Engine.loop) { nativeAudio.currentTime = 0; nativeAudio.play(); }
       else setPlayIcon(false);
+    });
+    // El stream/archivo de la pista actual ya no existe o no se puede leer
+    // (p. ej. se borró desde el explorador de archivos). Saltar y limpiar.
+    nativeAudio.addEventListener("error", () => {
+      if (!playerOnlyMode) return;
+      if (!nativeAudio.src) return;
+      const track = playlist[plIndex];
+      console.warn("native audio error", nativeAudio.error);
+      $("#loaderBusy").hidden = true; $("#waveBusy").hidden = true; $("#loaderIdle").hidden = false;
+      if (!checkStorageOnFail(track)) skipMissingTrack(track, true);
     });
 
     // barra de seek del modo reproductor

@@ -6,6 +6,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.JavascriptInterface
+import java.util.concurrent.Executors
 import android.webkit.WebChromeClient
 import android.webkit.ValueCallback
 import android.webkit.PermissionRequest
@@ -44,6 +45,8 @@ class MainActivity : Activity() {
         private var ref: java.lang.ref.WeakReference<MainActivity>? = null
         // Llamado desde PlaybackService para controlar la app web (toggle / timer).
         fun runJs(js: String) { ref?.get()?.evalJs(js) }
+        // Pool para browseAsync() (escaneo SAF fuera del hilo del WebView).
+        private val browsePool = Executors.newCachedThreadPool()
     }
 
     // Ejecuta JS en el WebView desde el hilo de UI (lo usa la notificación nativa).
@@ -1217,6 +1220,18 @@ class MainActivity : Activity() {
         // Hijos (carpetas + audios) de una carpeta del árbol como JSON [{name,uri,dir}].
         @JavascriptInterface
         fun browse(folderUriString: String): String = listChildrenJson(Uri.parse(folderUriString))
+
+        // Versión asíncrona de browse(): no bloquea el hilo del WebView (carpetas
+        // grandes). Responde por window.DSKBridge.__browseResult(reqId, json).
+        @JavascriptInterface
+        fun browseAsync(folderUriString: String, reqId: String) {
+            val uri = Uri.parse(folderUriString)
+            browsePool.execute {
+                val json = try { listChildrenJson(uri) } catch (e: Exception) { "[]" }
+                val payload = org.json.JSONObject.quote(json)
+                runJs("window.DSKBridge&&window.DSKBridge.__browseResult&&window.DSKBridge.__browseResult(${org.json.JSONObject.quote(reqId)},$payload)")
+            }
+        }
 
         // Lee un audio por URI estable como base64 (fallback si el stream fallara).
         @JavascriptInterface

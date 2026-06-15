@@ -21,6 +21,7 @@
         load_change: "CHANGE TRACK",
         decoding: "REWINDING TAPE…",
         err_decode: "Could not read that file. Try MP3, WAV, OGG or OPUS.", need_all_files: "Grant \"All files access\" to play imported tracks.",
+        file_missing_skipped: "File not found — removed from the list.",
         err_audio: "Audio engine failed to start. Reload and try again.",
 
         /* transport */
@@ -210,6 +211,7 @@
         load_change: "CAMBIAR PISTA",
         decoding: "REBOBINANDO LA CINTA…",
         err_decode: "No se pudo leer el archivo. Prueba MP3, WAV, OGG u OPUS.", need_all_files: "Concede \"Acceso a todos los archivos\" para reproducir las pistas importadas.",
+        file_missing_skipped: "Archivo no encontrado: eliminado de la lista.",
         err_audio: "El motor de audio no arrancó. Recarga e inténtalo de nuevo.",
 
         play: "Reproducir", pause: "Pausa", stop: "Detener",
