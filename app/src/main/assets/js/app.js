@@ -1630,6 +1630,7 @@
         endOfTrackTimer = false;
         updateTimerBadge();
         setPlayIcon(false);
+        if (_eotFading) { setOutputVolumeFactor(1); _eotFading = false; }
         try { if (window.AndroidMedia && window.AndroidMedia.stopNotification) window.AndroidMedia.stopNotification(); } catch (e) {}
         return;
       }
@@ -2159,6 +2160,36 @@
     waveX.fillRect(px - 1, 0, 2, H);
   }
 
+  // Aplica un factor 0..1 sobre el volumen de salida (1 = volumen normal del
+  // usuario), vía el nodo de fade dedicado del Engine. `secsLeft`, si se pasa,
+  // permite programar una rampa que llega EXACTAMENTE a 0 al final (evita el
+  // corte brusco que deja setTargetAtTime, que es asintótico y nunca llega a 0).
+  function setOutputVolumeFactor(k, secsLeft) {
+    try { Engine.setFadeFactor(k, secsLeft); } catch (e) {}
+  }
+
+  let _eotFading = false; // evita reiniciar el fade en cada frame
+  function tickEndOfTrackFade() {
+    if (!endOfTrackTimer || !Engine.playing) {
+      if (_eotFading) { setOutputVolumeFactor(1); _eotFading = false; }
+      return;
+    }
+    const dur = curDurationOverride > 0 ? curDurationOverride : (Engine.duration || 0);
+    if (!dur) return;
+    const left = dur - Engine.position();
+    if (left <= FADE_SECS) {
+      _eotFading = true;
+      const lin = Math.max(0, Math.min(1, left / FADE_SECS)); // 1→0
+      // curva tipo "equal power": cae más despacio al principio y se precipita
+      // al final de forma suave (sin el corte brusco de una rampa lineal).
+      const k = lin * lin;
+      setOutputVolumeFactor(k, left);
+    } else if (_eotFading) {
+      setOutputVolumeFactor(1);
+      _eotFading = false;
+    }
+  }
+
   let _lastQSave = 0;
   let _lastMediaPush = 0;
   function raf(now) {
@@ -2167,6 +2198,7 @@
     drawViz();
     // refrescar la posición de la notificación cada ~4s mientras suena
     if (Engine.playing && t - _lastMediaPush > 4000) { _lastMediaPush = t; try { pushMediaState(true); } catch (e) {} }
+    tickEndOfTrackFade();
     if (playerOnlyMode) {
       // modo reproductor: no hay buffer; actualizar tiempo y barra de seek
       $("#timeCur").textContent = fmt.time(Engine.position());
@@ -2276,7 +2308,7 @@
   let timerEnd = 0;        // timestamp (ms) cuando expira
   let timerRAF = null;
   let endOfTrackTimer = false;   // parar al acabar la pista actual
-  const FADE_SECS = 10;    // fade-out final
+  const FADE_SECS = 15;    // fade-out final
 
   function updateTimerBadge() {
     const badge = $("#timerBadge");
@@ -2314,7 +2346,8 @@
     $("#timerBadge").hidden = true;
     $("#btnTimer").classList.remove("is-on");
     $("#timerCancel").hidden = true;
-    // restaurar volumen por si quedó a media bajada
+    // restaurar volumen por si quedó a media bajada (timer por minutos o fin de pista)
+    if (_eotFading) { setOutputVolumeFactor(1); _eotFading = false; }
     if (Engine.chain) {
       try {
         Engine.setParam("output", "volume", Engine.params.output.volume);
@@ -2338,13 +2371,10 @@
     const s = Math.ceil(left / 1000);
     badge.textContent = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
     // fade-out suave en los últimos FADE_SECS
-    if (left <= FADE_SECS * 1000 && Engine.chain && Engine.playing) {
+    if (left <= FADE_SECS * 1000 && Engine.playing) {
       const k = Math.max(0, left / (FADE_SECS * 1000)); // 1→0
-      const target = Engine.params.output.volume * k;
-      try {
-        const v = Engine.chain.volume.gain;
-        v.setTargetAtTime(target, Engine.ctx.currentTime, 0.2);
-      } catch (e) {}
+      _eotFading = true;
+      setOutputVolumeFactor(k);
     }
     timerRAF = requestAnimationFrame(tickTimer);
   }
@@ -2712,7 +2742,7 @@
     nativeAudio.addEventListener("pause", () => { if (playerOnlyMode && !nativeAudio.ended) setPlayIcon(false); });
     nativeAudio.addEventListener("ended", () => {
       if (!playerOnlyMode) return;
-      if (endOfTrackTimer) { endOfTrackTimer = false; updateTimerBadge(); setPlayIcon(false); return; }
+      if (endOfTrackTimer) { endOfTrackTimer = false; updateTimerBadge(); setPlayIcon(false); if (_eotFading) { setOutputVolumeFactor(1); _eotFading = false; } return; }
       if (playlist.length > 1 && !Engine.loop) gotoNext(true);
       else if (Engine.loop) { nativeAudio.currentTime = 0; nativeAudio.play(); }
       else setPlayIcon(false);

@@ -311,7 +311,12 @@
       // nodo de karaoke (reduce la voz centrada) en la salida final
       this.karaoke = buildKaraoke(this.ctx);
       this.normGain.connect(this.karaoke.input);
-      this.karaoke.output.connect(this.ctx.destination);
+      // nodo de fade dedicado al "fin de pista" (sleep timer): no se toca
+      // desde ningún otro sitio, así no interfiere con normalización/karaoke.
+      this.fadeGain = this.ctx.createGain();
+      this.fadeGain.gain.value = 1;
+      this.karaoke.output.connect(this.fadeGain);
+      this.fadeGain.connect(this.ctx.destination);
       this.karaoke.setAmount(this.karaokeOn ? KARAOKE_AMOUNT : 0);
       this.chain.volume.connect(this.analyser).connect(this.normGain);
       this.chain.setIR(this.params.reverb.size);
@@ -392,6 +397,28 @@
       this.normEnabled = !!enabled;
       if (level) this.normLevel = level;
       this._rampNorm();
+    },
+
+    // Fade dedicado para el "fin de pista" del sleep timer (0..1). No afecta
+    // a normalización ni karaoke; funciona igual en modo nativo y normal.
+    // `secsLeft`: si se indica y es pequeño, programa una rampa lineal que
+    // llega EXACTAMENTE a 0 en ese tiempo (evita el corte brusco final que
+    // dejaría setTargetAtTime, que es asintótico y nunca llega a 0).
+    setFadeFactor(k, secsLeft) {
+      if (!this.fadeGain || !this.ctx) return;
+      k = Math.max(0, Math.min(1, k));
+      const g = this.fadeGain.gain;
+      const t = this.ctx.currentTime;
+      try {
+        if (typeof secsLeft === "number" && secsLeft <= 1.2) {
+          // tramo final: rampa lineal exacta hacia 0 (o hacia k si k>0 por algún margen)
+          g.cancelScheduledValues(t);
+          g.setValueAtTime(g.value, t);
+          g.linearRampToValueAtTime(0, t + Math.max(0.05, secsLeft));
+        } else {
+          g.setTargetAtTime(k, t, 0.3);
+        }
+      } catch (e) { try { g.value = k; } catch (_) {} }
     },
 
     _rampNorm() {
