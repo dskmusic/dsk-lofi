@@ -6,7 +6,16 @@
 (function () {
   "use strict";
   const { $, $$ } = UI;
-  const VERSION = "1.0.0";
+  const VERSION = "1.0.0";   // fallback (navegador/PWA, sin bridge nativo)
+  function getAppVersion() {
+    try {
+      if (typeof window.DSKBridge !== "undefined" && typeof window.DSKBridge.appVersion === "function") {
+        const v = window.DSKBridge.appVersion();
+        if (v) return v;
+      }
+    } catch (e) {}
+    return VERSION;
+  }
   const LS = { theme: "dsklofi.theme", params: "dsklofi.params", collapsed: "dsklofi.collapsed" };
 
   /* ========================= THEME ========================= */
@@ -971,14 +980,14 @@
     if (typeof o.nativeIndex === "number") return { name: o.name, nativeIndex: o.nativeIndex };
     return null;
   }
-  function loadItems(items, startIndex, source, autoplay) {
+  function loadItems(items, startIndex, source, autoplay, restorePos) {
     const list = (items || []).map(plItemFrom).filter(Boolean);
     if (!list.length) return;
     playlist = list;
     plIndex = Math.max(0, Math.min(startIndex || 0, playlist.length - 1));
     if (shuffle) buildShuffleBag(true);
     currentSource = source || { type: "folder", name: "" };
-    pendingRestorePos = 0;
+    pendingRestorePos = (restorePos && restorePos > 0.3) ? restorePos : 0;
     renderPlaylist(); emitQueue();
     loadFile(playlist[plIndex], autoplay !== false);
   }
@@ -1119,13 +1128,17 @@
     try {
       const hasUri = playlist.length && playlist.some(function (t) { return t.uri; });
       const isNative = playlist.length && typeof playlist[0].nativeIndex === "number";
-      // colas web (File) no son serializables; el resto (uri/nativeIndex) sí
-      if (!playlist.length || (!hasUri && !isNative)) { localStorage.removeItem(QUEUE_KEY); return; }
+      const hasYt = playlist.length && playlist.some(function (t) { return t.ytId; });
+      // colas web (File) no son serializables; el resto (uri/nativeIndex/ytId) sí
+      if (!playlist.length || (!hasUri && !isNative && !hasYt)) { localStorage.removeItem(QUEUE_KEY); return; }
       const data = {
         names: playlist.map(function (t) { return t.name; }),
         uris: playlist.map(function (t) { return t.uri || null; }),
+        ytIds: playlist.map(function (t) { return t.ytId || null; }),
+        uploaders: playlist.map(function (t) { return t.uploader || null; }),
+        thumbs: playlist.map(function (t) { return t.thumb || null; }),
         index: plIndex,
-        pos: Engine.buffer ? Engine.position() : 0,
+        pos: (Engine.nativeMode || Engine.buffer) ? Engine.position() : 0,
         shuffle: shuffle,
         source: currentSource
       };
@@ -2830,7 +2843,7 @@
     });
 
     $("#bridgeMode").textContent = Bridge.native ? "ANDROID · /DSKlofi" : "WEB · PWA";
-    $("#appVersion").textContent = "v" + VERSION;
+    $("#appVersion").textContent = "v" + getAppVersion();
 
     initUpdateChecker();
   }

@@ -107,6 +107,18 @@
         opt_check_update: "CHECK FOR UPDATES",
         opt_about: "DSK•LoFi — local lofi FX studio. No network, no tracking.",
 
+        /* config backup/restore */
+        cfg_title: "BACKUP & RESTORE",
+        cfg_sub: "Save or load your settings, effects, folders and playlists as a file.",
+        cfg_export: "EXPORT CONFIGURATION",
+        cfg_import: "IMPORT CONFIGURATION",
+        cfg_import_first: "Import configuration",
+        cfg_exported: "Configuration exported",
+        cfg_imported: "Configuration imported — restarting…",
+        cfg_import_fail: "Could not import file",
+        cfg_import_title: "IMPORT CONFIGURATION?",
+        cfg_import_msg: "This will replace your current settings, effects, folders and playlists. The app will restart.",
+
         /* confirm */
         cf_restore_title: "RESTORE DEFAULTS?",
         cf_restore_msg: "Every effect, the theme and the language will return to factory values. Your loaded track is kept.",
@@ -287,6 +299,18 @@
         opt_restore_sub: "Efectos, tema e idioma vuelven a fábrica.",
         opt_check_update: "BUSCAR ACTUALIZACIONES",
         opt_about: "DSK•LoFi — estudio de FX lofi local. Sin red, sin rastreo.",
+
+        /* copia de seguridad / restauración de configuración */
+        cfg_title: "COPIA DE SEGURIDAD",
+        cfg_sub: "Guarda o carga tus ajustes, efectos, carpetas y listas en un archivo.",
+        cfg_export: "EXPORTAR CONFIGURACIÓN",
+        cfg_import: "IMPORTAR CONFIGURACIÓN",
+        cfg_import_first: "Importar configuración",
+        cfg_exported: "Configuración exportada",
+        cfg_imported: "Configuración importada — reiniciando…",
+        cfg_import_fail: "No se pudo importar el archivo",
+        cfg_import_title: "¿IMPORTAR CONFIGURACIÓN?",
+        cfg_import_msg: "Esto sustituirá tus ajustes, efectos, carpetas y listas actuales. La app se reiniciará.",
 
         cf_restore_title: "¿RESTAURAR VALORES?",
         cf_restore_msg: "Todos los efectos, el tema y el idioma volverán a los valores de fábrica. Tu pista cargada se mantiene.",

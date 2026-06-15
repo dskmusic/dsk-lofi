@@ -43,6 +43,15 @@ android {
     }
 }
 
+// Evita el error "Type androidx.annotation.experimental.R is defined multiple
+// times": androidx.media:1.7.0 arrastra una annotation-experimental antigua
+// que choca con la que piden material/appcompat. Forzamos una sola versión.
+configurations.all {
+    resolutionStrategy {
+        force("androidx.annotation:annotation-experimental:1.4.1")
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
@@ -51,7 +60,9 @@ dependencies {
     implementation(libs.androidx.constraintlayout)
 
     // Notificación de reproducción (MediaSessionCompat + MediaStyle)
-    implementation("androidx.media:media:1.7.0")
+    implementation("androidx.media:media:1.7.0") {
+        exclude(group = "androidx.annotation", module = "annotation-experimental")
+    }
 
     // Búsqueda/scraping de letras (LRCLIB + Genius) — LyricsBridge
     implementation(libs.jsoup)
@@ -61,6 +72,8 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.jaudiotagger)
     coreLibraryDesugaring(libs.desugar)
+
+    implementation("androidx.annotation:annotation-experimental:1.4.1")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

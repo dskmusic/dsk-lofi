@@ -353,12 +353,18 @@
     const clr = $("#libExpSearchClear"); if (clr) clr.hidden = true;
   }
 
+  function trimRootName(name, max = 9) {
+    if (!name) return name;
+    return name.length > max ? name.slice(0, max) + "…" : name;
+  }
   function rootRow(r) {
     const row = document.createElement("div");
     row.className = "lib-row lib-row--folder";
     row.innerHTML = '<span class="lib-row__ic">' + IC.folder + '</span><span class="lib-row__name"></span>' +
       '<button class="lib-row__act" type="button" aria-label="' + T("ex_remove_root") + '">&times;</button>';
-    row.querySelector(".lib-row__name").textContent = r.name;
+    const nameEl = row.querySelector(".lib-row__name");
+    nameEl.textContent = trimRootName(r.name);
+    nameEl.title = r.name;
     row.addEventListener("click", () => enterFolder(r.uri, r.name));
     row.querySelector(".lib-row__act").addEventListener("click", (e) => {
       e.stopPropagation();
@@ -589,10 +595,66 @@
     r.readAsText(file);
   }
 
+  /* ============================ CONFIGURACIÓN COMPLETA (backup/restore) ============================ */
+  const SETTINGS_KEYS = [
+    "dsklofi.theme", "dsklofi.lang", "dsklofi.params", "dsklofi.collapsed",
+    "dsklofi.speed", "dsklofi.viz", "dsklofi.vizcover", "dsklofi.splash",
+    "dsklofi.norm", "dsklofi.normlevel", "dsklofi.playeronly",
+    "dsklofi.genpresets", "dsklofi.lyrsrc", "dsklofi.audd_token", LISTS_KEY
+  ];
+
+  function exportSettings() {
+    const settings = {};
+    SETTINGS_KEYS.forEach((k) => {
+      const v = localStorage.getItem(k);
+      if (v !== null) settings[k] = v;
+    });
+    let roots = [];
+    try { roots = JSON.parse(hasBridge("listRoots") ? window.DSKBridge.listRoots() : "[]") || []; } catch (e) {}
+    const payload = { schema: "dsklofi-settings", version: 1, settings: settings, roots: roots };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    if (hasBridge("saveFile")) {
+      const r = new FileReader();
+      r.onloadend = () => { try { window.DSKBridge.saveFile("DSKLoFi_config.json", String(r.result).split(",")[1], "application/json"); UI.toast(T("cfg_exported")); } catch (e) {} };
+      r.readAsDataURL(blob);
+    } else {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = "DSKLoFi_config.json";
+      document.body.appendChild(a); a.click(); a.remove();
+      UI.toast(T("cfg_exported"));
+    }
+  }
+
+  function importSettings(file) {
+    const r = new FileReader();
+    r.onload = async () => {
+      try {
+        const data = JSON.parse(r.result);
+        if (!data || data.schema !== "dsklofi-settings" || !data.settings) throw 0;
+        const ok = await UI.confirm({ title: T("cfg_import_title"), message: T("cfg_import_msg"), danger: true, confirmLabel: T("list_import") });
+        if (!ok) return;
+        SETTINGS_KEYS.forEach((k) => {
+          if (Object.prototype.hasOwnProperty.call(data.settings, k)) {
+            try { localStorage.setItem(k, data.settings[k]); } catch (e) {}
+          }
+        });
+        let missing = 0;
+        const roots = Array.isArray(data.roots) ? data.roots : [];
+        if (roots.length && hasBridge("addRootByUri")) {
+          roots.forEach((rt) => { if (rt && rt.uri) { try { if (!window.DSKBridge.addRootByUri(rt.uri)) missing++; } catch (e) { missing++; } } });
+        } else if (roots.length) { missing = roots.length; }
+        UI.toast(missing ? (T("cfg_imported") + " · " + T("imp_missing_roots").replace("{n}", missing)) : T("cfg_imported"));
+        setTimeout(() => { try { location.reload(); } catch (e) {} }, 700);
+      } catch (e) { UI.toast(T("cfg_import_fail"), "danger"); }
+    };
+    r.readAsText(file);
+  }
+
+
   /* ============================ MINI-LISTA: etiqueta de fuente ============================ */
   function sourceLabel(src) {
     if (!src || src.type === "none") return T("playlist");
-    if (src.name) return src.name;
+    if (src.name) return trimRootName(src.name);
     if (src.type === "folder") return T("src_folder");
     if (src.type === "list") return T("src_list");
     if (src.type === "file") return T("src_file");
@@ -601,7 +663,12 @@
   function applySource(detail) {
     const label = sourceLabel(detail && detail.source);
     const btn = $("#plTitleBtn");
-    if (btn) { const txt = btn.querySelector(".playlist__title-txt"); if (txt) txt.textContent = label; else btn.textContent = label; }
+    if (btn) {
+      const txt = btn.querySelector(".playlist__title-txt");
+      if (txt) txt.textContent = label; else btn.textContent = label;
+      const full = (detail && detail.source && detail.source.name) || label;
+      btn.title = full;
+    }
     // El título del modal de biblioteca queda fijo (BIBLIOTECA/LIBRARY); solo
     // la cabecera de la mini-cola muestra el nombre de la fuente.
   }
@@ -624,10 +691,23 @@
       if (document.body.classList.contains("has-track")) return;     // ya hay algo cargado
       const raw = localStorage.getItem(QUEUE_KEY); if (!raw) return;
       const d = JSON.parse(raw);
-      if (!d || !Array.isArray(d.uris) || !d.uris.some((u) => u)) return;
-      const items = (d.names || []).map((n, i) => ({ name: n, uri: d.uris[i] })).filter((x) => x.uri);
-      if (!items.length) return;
-      DSKQueue.load(items, d.index || 0, d.source || { type: "folder", name: T("src_folder") }, false);
+      if (!d || !Array.isArray(d.names) || !d.names.length) return;
+      if (Array.isArray(d.uris) && d.uris.some((u) => u)) {
+        const items = d.names.map((n, i) => ({ name: n, uri: d.uris[i] })).filter((x) => x.uri);
+        if (!items.length) return;
+        DSKQueue.load(items, d.index || 0, d.source || { type: "folder", name: T("src_folder") }, false, d.pos || 0);
+        return;
+      }
+      if (Array.isArray(d.ytIds) && d.ytIds.some((v) => v)) {
+        const items = d.names.map((n, i) => ({
+          name: n,
+          ytId: d.ytIds[i],
+          uploader: (d.uploaders && d.uploaders[i]) || "",
+          thumb: (d.thumbs && d.thumbs[i]) || ""
+        })).filter((x) => x.ytId);
+        if (!items.length) return;
+        DSKQueue.load(items, d.index || 0, d.source || { type: "online", name: "YouTube" }, false, d.pos || 0);
+      }
     } catch (e) {}
   }
 
@@ -680,6 +760,22 @@
     const ex = $("#libExport"); if (ex) ex.addEventListener("click", exportLists);
     const im = $("#libImport"); if (im) im.addEventListener("click", () => $("#libImportInput").click());
     const imi = $("#libImportInput"); if (imi) imi.addEventListener("change", (e) => { if (e.target.files[0]) importLists(e.target.files[0]); e.target.value = ""; });
+
+    // copia de seguridad completa (ajustes/efectos/carpetas/listas)
+    const expCfg = $("#optExportCfg"); if (expCfg) expCfg.addEventListener("click", exportSettings);
+    const impCfgInput = $("#optImportCfgInput");
+    const impCfg = $("#optImportCfg"); if (impCfg) impCfg.addEventListener("click", () => { if (impCfgInput) impCfgInput.click(); });
+    if (impCfgInput) impCfgInput.addEventListener("change", (e) => { if (e.target.files[0]) importSettings(e.target.files[0]); e.target.value = ""; });
+
+    // enlace discreto "importar configuración": solo en la primera ejecución
+    const firstRunBtn = $("#btnImportCfgFirstRun");
+    if (firstRunBtn) {
+      try {
+        if (!localStorage.getItem("dsklofi.setupdone")) firstRunBtn.hidden = false;
+        localStorage.setItem("dsklofi.setupdone", "1");
+      } catch (e) {}
+      firstRunBtn.addEventListener("click", (e) => { e.stopPropagation(); if (impCfgInput) impCfgInput.click(); });
+    }
 
     // si no hay explorador nativo, ocultar su pestaña
     if (!explorerSupported()) { const t = $("#libTabExp"); if (t) t.hidden = true; }

@@ -470,8 +470,14 @@ class MainActivity : Activity() {
                 val intent = Intent(Intent.ACTION_GET_CONTENT)
                 intent.addCategory(Intent.CATEGORY_OPENABLE)
                 intent.type = "*/*"
-                // Respetar el accept del <input> (audio, json, etc.)
-                val accept = fileChooserParams?.acceptTypes?.filter { it.contains("/") }
+                // Respetar el accept del <input> SOLO si es un tipo comodín fiable
+                // (audio/*, image/*…). Tipos concretos como "application/json" o
+                // extensiones (".json") no siempre coinciden con el MIME real que
+                // reporta el proveedor de archivos y dejarían la lista vacía.
+                val accept = fileChooserParams?.acceptTypes
+                    ?.flatMap { it.split(",") }
+                    ?.map { it.trim() }
+                    ?.filter { Regex("^[a-z]+/\\*$").matches(it) }
                 if (!accept.isNullOrEmpty()) intent.putExtra(Intent.EXTRA_MIME_TYPES, accept.toTypedArray())
 
                 try {
@@ -1736,8 +1742,12 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        // Al cerrar la app el audio del WebView muere: retira la notificación.
-        try { stopService(Intent(this, PlaybackService::class.java)) } catch (e: Exception) {}
+        // Si está sonando, NO paramos el servicio ni matamos el proceso:
+        // el WebView (con el motor Web Audio) sigue vivo en segundo plano
+        // y la notificación/MediaSession siguen controlando la reproducción.
+        if (PlaybackService.instance?.isPlaying() != true) {
+            try { stopService(Intent(this, PlaybackService::class.java)) } catch (e: Exception) {}
+        }
         ref = null
         super.onDestroy()
     }

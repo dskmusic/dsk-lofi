@@ -149,6 +149,7 @@
         <button class="chip loader__folder" id="btnLoadFolder" type="button" data-i18n="load_dir">LOAD FOLDER</button>
         <button class="chip loader__lib" id="btnLibrary" type="button" data-i18n="lib_open">LIBRARY</button>
       </div>
+      <button class="loader__import-cfg" id="btnImportCfgFirstRun" type="button" data-i18n="cfg_import_first" hidden="hidden">Importar configuración</button>
     </div>
     <div class="loader loader--busy" id="loaderBusy" hidden="hidden">
       <span class="spinner"></span>
@@ -351,6 +352,15 @@
     <div class="opt opt--restore">
       <button class="btn btn--ghost btn--block" id="btnCheckUpdate" type="button" data-i18n="opt_check_update">BUSCAR ACTUALIZACIONES</button>
       <p class="opt__sub" id="updateStatus"></p>
+    </div>
+    <div class="opt opt--restore">
+      <div class="opt__sw-text">
+        <span class="param__label" data-i18n="cfg_title">BACKUP &amp; RESTORE</span>
+        <p class="opt__sub" data-i18n="cfg_sub"></p>
+      </div>
+      <button class="btn btn--ghost btn--block" id="optExportCfg" type="button" data-i18n="cfg_export">EXPORT CONFIGURATION</button>
+      <button class="btn btn--ghost btn--block" id="optImportCfg" type="button" data-i18n="cfg_import">IMPORT CONFIGURATION</button>
+      <input type="file" id="optImportCfgInput" accept="application/json,.json" hidden="hidden">
     </div>
     <div class="modal__foot">
       <span class="opt__badge" id="bridgeMode">WEB · PWA</span>

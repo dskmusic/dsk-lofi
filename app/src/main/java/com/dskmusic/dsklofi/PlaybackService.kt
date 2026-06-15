@@ -76,6 +76,7 @@ class PlaybackService : Service() {
     }
 
     private var playing = false
+    fun isPlaying(): Boolean = playing
     private var title = "DSK•LoFi"
     private var artist = "lofi tape machine"
     private var durationMs = 0L
