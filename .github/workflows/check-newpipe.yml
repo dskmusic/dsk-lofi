@@ -91,22 +91,12 @@ jobs:
         if: steps.newpipe.outputs.should_build == 'true'
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
 
-      # Workaround para evitar el error 403 Forbidden de JitPack
-      - name: Configurar Workaround para JitPack 403
-        if: steps.newpipe.outputs.should_build == 'true'
-        run: |
-          mkdir -p ~/.gradle
-          echo "systemProp.http.agent=curl/7.79.1" >> ~/.gradle/gradle.properties
-          echo "authToken=${{ secrets.GITHUB_TOKEN }}" >> ~/.gradle/gradle.properties
-
       - name: Dar permisos de ejecución a gradlew
         if: steps.newpipe.outputs.should_build == 'true'
         run: chmod +x gradlew
 
       - name: Compilar APK release firmado
         if: steps.newpipe.outputs.should_build == 'true'
-        env:
-          JITPACK_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ./gradlew assembleRelease \
             -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \

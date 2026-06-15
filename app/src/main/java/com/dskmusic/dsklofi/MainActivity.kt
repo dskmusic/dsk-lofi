@@ -1736,12 +1736,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        // Si está sonando, NO paramos el servicio ni matamos el proceso:
-        // el WebView (con el motor Web Audio) sigue vivo en segundo plano
-        // y la notificación/MediaSession siguen controlando la reproducción.
-        if (PlaybackService.instance?.isPlaying() != true) {
-            try { stopService(Intent(this, PlaybackService::class.java)) } catch (e: Exception) {}
-        }
+        // Al cerrar la app el audio del WebView muere: retira la notificación.
+        try { stopService(Intent(this, PlaybackService::class.java)) } catch (e: Exception) {}
         ref = null
         super.onDestroy()
     }

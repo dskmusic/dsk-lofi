@@ -76,8 +76,6 @@ class PlaybackService : Service() {
     }
 
     private var playing = false
-
-    fun isPlaying(): Boolean = playing
     private var title = "DSK•LoFi"
     private var artist = "lofi tape machine"
     private var durationMs = 0L
@@ -337,16 +335,6 @@ class PlaybackService : Service() {
             ch.setShowBadge(false)
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch)
         }
-    }
-
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        // El usuario cerró la app desde "Recientes" (swipe). Si hay reproducción
-        // activa, NO detenemos el servicio ni el proceso: el WebView sigue vivo
-        // en segundo plano y el audio continúa, controlado por la notificación.
-        if (!playing) {
-            stopSelf()
-        }
-        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
