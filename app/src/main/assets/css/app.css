@@ -1234,6 +1234,7 @@
     /* la lista a pantalla completa NO debe sumar el inset (el WebView ya lo aplica) */
     .is-webview .plfs { padding-top: 0; }
     .is-webview .lib-foot { padding-bottom: 15px; }
+    .is-webview .sel-bar { padding-bottom: var(--space-2); }
 
     /* bloque SALIDA siempre oculto: el volumen va al 100% y se controla con el
        volumen del propio dispositivo */
@@ -1687,6 +1688,43 @@
     .lib-row--pending .lib-row__ic { color: var(--neon-amber); }
     .lib-row--pending .lib-row__name { color: var(--neon-amber); }
     .lib-row__sub--pending { color: var(--neon-amber); }
+
+    /* ---- selección múltiple ---- */
+    .lib-sel--active { background: var(--acc-dim); color: var(--acc); }
+    .lib-row__chk {
+      flex: none; width: 22px; height: 22px; border-radius: var(--radius-sm);
+      border: 2px solid var(--color-border);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: transparent;
+    }
+    .lib-row__chk .ic { width: 14px; height: 14px; stroke-width: 3; }
+    .lib-row--checked { background: var(--acc-faint); }
+    .lib-row--checked .lib-row__chk { background: var(--acc); border-color: var(--acc); color: var(--color-bg); }
+    .sel-bar {
+      display: flex; align-items: stretch; gap: var(--space-2);
+      padding: var(--space-2) var(--space-3) calc(var(--space-2) + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--color-border);
+      background: var(--color-surface-raised);
+    }
+    .sel-bar[hidden] { display: none; }
+    .sel-bar__count {
+      flex: none; min-width: 26px; text-align: center;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--color-text-muted);
+    }
+    .sel-bar__btn {
+      flex: 1; min-width: 0; padding: var(--space-1) var(--space-1);
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      font-family: var(--font-display); font-size: 10px;
+      letter-spacing: 0.3px; text-transform: uppercase; line-height: 1.2;
+      border-radius: var(--radius-sm);
+      background: var(--acc); color: var(--color-bg); box-shadow: var(--btn-edge);
+      white-space: normal; overflow-wrap: break-word;
+    }
+    .sel-bar__btn:active { transform: translateY(2px); box-shadow: var(--btn-edge-press); }
+    .sel-bar__btn:disabled { opacity: 0.4; }
+    .sel-bar__btn--ghost { background: var(--color-surface-raised); color: var(--color-text); box-shadow: var(--shadow-inset); }
+    .sel-bar__btn--danger { background: var(--neon-red); color: #fff; }
     .lib-row__name {
       flex: 1; min-width: 0;
       font-size: var(--fs-base, 15px); color: var(--color-text-muted);

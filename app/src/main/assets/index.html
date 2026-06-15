@@ -532,6 +532,8 @@
     <div class="lib-bar">
       <button class="lib-up" id="libUp" type="button" data-i18n-aria="ex_up" hidden="hidden"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></button>
       <span class="lib-path" id="libPath"></span>
+      <button class="lib-up" id="libExpAddAll" type="button" data-i18n-aria="ex_add_all" hidden="hidden"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="13" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><path d="M17 16v6"></path><path d="M14 19h6"></path></svg></button>
+      <button class="lib-up" id="libExpSelect" type="button" data-i18n-aria="sel_select" hidden="hidden"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg></button>
       <button class="lib-add" id="libAddRoot" type="button" data-i18n="ex_add_root"></button>
     </div>
     <div class="plfs__search">
@@ -564,11 +566,22 @@
       <div class="lib-bar">
         <button class="lib-up" id="libListBack" type="button" data-i18n-aria="ex_up"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></button>
         <span class="lib-path" id="libListTitle"></span>
+        <button class="lib-up" id="libListSelect" type="button" data-i18n-aria="sel_select" hidden="hidden"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg></button>
         <button class="lib-add" id="libListPlay" type="button" data-i18n="list_play"></button>
       </div>
       <div class="lib-list" id="libListTracks"></div>
     </div>
   </section>
+
+  <!-- barra de acciones de selección múltiple -->
+  <div class="sel-bar" id="selBar" hidden="hidden">
+    <span class="sel-bar__count" id="selBarCount"></span>
+    <button class="sel-bar__btn" id="selPlayNext" type="button" data-i18n="m_play_next"></button>
+    <button class="sel-bar__btn" id="selPlayLast" type="button" data-i18n="m_play_last"></button>
+    <button class="sel-bar__btn" id="selAddList" type="button" data-i18n="m_add_list"></button>
+    <button class="sel-bar__btn sel-bar__btn--danger" id="selRemove" type="button" data-i18n="m_remove" hidden="hidden"></button>
+    <button class="sel-bar__btn sel-bar__btn--ghost" id="selCancel" type="button" data-i18n="cancel"></button>
+  </div>
 </div>
 
 <!-- menú de acciones de pista (⋮) -->

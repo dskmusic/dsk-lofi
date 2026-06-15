@@ -771,6 +771,7 @@
       })();
 
       const p = this.params;
+      const speed = this.speed || 1;
       const TAPE_START = opts.tapeEffect ? 0.55 : 0;
       const TAPE_END   = opts.tapeEffect ? 0.65 : 0;
 
@@ -780,7 +781,7 @@
       tail = Math.min(tail, 6);
 
       const sr = srcBuffer.sampleRate;
-      const contentDur = srcBuffer.duration;
+      const contentDur = srcBuffer.duration / speed;
       const totalDur = TAPE_START + contentDur + TAPE_END + tail;
       const len = Math.ceil(totalDur * sr);
       const oc = new OfflineAudioContext(2, len, sr);
@@ -799,6 +800,7 @@
 
       const src = oc.createBufferSource();
       src.buffer = srcBuffer;
+      src.playbackRate.value = speed;
       src.connect(chain.input);
       src.start(TAPE_START);
 

@@ -35,7 +35,8 @@
     play: '<svg class="ic" viewBox="0 0 24 24"><polygon points="6 4 20 12 6 20"></polygon></svg>',
     dots: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="12" cy="19" r="1.6"></circle></svg>',
     up: '<svg class="ic" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"></path></svg>',
-    relink: '<svg class="ic" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><path d="M21 3v6h-6"></path></svg>'
+    relink: '<svg class="ic" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><path d="M21 3v6h-6"></path></svg>',
+    check: '<svg class="ic" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg>'
   };
   const stripExt = (s) => (s || "").replace(/\.[^.]+$/, "");
 
@@ -95,8 +96,24 @@
   }
 
   /* ============================ PESTAÑAS ============================ */
+  const VIEW_KEY = "dsklofi.lastview";
   let activeTab = "now";
+  function saveViewState() {
+    try {
+      const st = { tab: activeTab };
+      if (activeTab === "explore") st.path = expStack.map((l) => ({ uri: l.uri, name: l.name }));
+      if (activeTab === "lists" && detailId) st.listId = detailId;
+      localStorage.setItem(VIEW_KEY, JSON.stringify(st));
+    } catch (e) {}
+  }
+  function loadViewState() {
+    try { return JSON.parse(localStorage.getItem(VIEW_KEY)) || null; } catch (e) { return null; }
+  }
   function setTab(tab) {
+    // salir del modo de selección si cambiamos de pestaña
+    if (Sel.active && ((Sel.kind === "explorer" && tab !== "explore") || (Sel.kind === "list" && tab !== "lists"))) {
+      Sel.active = false; Sel.kind = null; Sel.ids.clear(); selUpdateUI();
+    }
     activeTab = tab;
     $$(".lib-tab").forEach((b) => b.classList.toggle("lib-tab--active", b.getAttribute("data-tab") === tab));
     $$(".lib-panel").forEach((p) => p.classList.toggle("lib-panel--active", p.getAttribute("data-panel") === tab));
@@ -107,6 +124,33 @@
       expSearchToken++; // detiene una búsqueda en curso al salir de la pestaña
     }
     if (tab === "lists") renderLists();
+    saveViewState();
+  }
+  /* re-navega el explorador hasta la carpeta recordada (sin tocar Sel) */
+  function restoreExplorerPath(path) {
+    expStack = [];
+    (path || []).forEach((lvl) => {
+      if (!lvl || !lvl.uri) return;
+      let entries = [];
+      try { entries = JSON.parse(window.DSKBridge.browse(lvl.uri) || "[]"); } catch (e) {}
+      expStack.push({ uri: lvl.uri, name: lvl.name, entries: entries });
+    });
+  }
+  /* abre la biblioteca recordando la última pestaña/carpeta/lista visitada */
+  function openLibraryRemembered() {
+    DSKQueue.open();
+    const st = loadViewState();
+    if (st && st.tab === "explore" && Array.isArray(st.path) && st.path.length && explorerSupported()) {
+      restoreExplorerPath(st.path);
+      setTab("explore");
+    } else if (st && st.tab === "lists" && st.listId && findList(st.listId)) {
+      showListDetail(st.listId);
+      setTab("lists");
+    } else if (st && ["now", "explore", "lists", "online"].indexOf(st.tab) !== -1) {
+      setTab(st.tab);
+    } else {
+      setTab("lists");
+    }
   }
 
   /* ============================ MENÚ ⋮ ============================ */
@@ -146,9 +190,11 @@
     else if (ctx.kind === "search") { if (ctx.onPlay) ctx.onPlay(); else DSKQueue.load([menuItem(ctx)], 0, { type: "folder", name: ctx.item.name }); }
   }
 
-  /* elegir lista destino (o crear nueva) */
-  function openListPick(item) {
-    if (!item) return;
+  /* elegir lista destino (o crear nueva). itemOrItems: {name,uri,...} | array de esos */
+  function openListPick(itemOrItems) {
+    const items = (Array.isArray(itemOrItems) ? itemOrItems : [itemOrItems]).filter(Boolean);
+    if (!items.length) return;
+    const addedToast = items.length > 1 ? T("q_added_list_n").replace("{n}", items.length) : T("q_added_list");
     const host = $("#listPickList");
     host.innerHTML = "";
     const mk = (label, fn, accent) => {
@@ -159,13 +205,13 @@
       host.appendChild(b);
     };
     mk(T("m_new_list"), () => askListName(null, (name) => {
-      const l = { id: newId(), name: name, items: [normItem(item)] };
+      const l = { id: newId(), name: name, items: items.map(normItem) };
       const lists = loadLists(); lists.push(l); saveLists(lists);
       UI.toast(T("list_created"));
     }), true);
     loadLists().forEach((l) => mk(l.name + "  ·  " + countLabel(l.items.length), () => {
       const lists = loadLists(); const t = lists.find((x) => x.id === l.id);
-      if (t) { t.items.push(normItem(item)); saveLists(lists); UI.toast(T("q_added_list")); if (activeTab === "lists") renderLists(); }
+      if (t) { t.items.push(...items.map(normItem)); saveLists(lists); UI.toast(addedToast); if (activeTab === "lists") renderLists(); }
     }));
     UI.openModal("listPickModal");
   }
@@ -187,16 +233,77 @@
     setTimeout(() => inp.focus(), 60);
   }
 
+  /* ============================ SELECCIÓN MÚLTIPLE ============================ */
+  // kind: 'explorer' (ids = uri de audio) | 'list' (ids = índice en l.items)
+  const Sel = { active: false, kind: null, ids: new Set() };
+
+  function selUpdateUI() {
+    const expBtn = $("#libExpSelect");
+    if (expBtn) expBtn.classList.toggle("lib-sel--active", Sel.active && Sel.kind === "explorer");
+    const listBtn = $("#libListSelect");
+    if (listBtn) listBtn.classList.toggle("lib-sel--active", Sel.active && Sel.kind === "list");
+    const bar = $("#selBar");
+    if (!bar) return;
+    bar.hidden = !Sel.active;
+    const cnt = $("#selBarCount"); if (cnt) cnt.textContent = countLabel(Sel.ids.size);
+    const removeBtn = $("#selRemove"); if (removeBtn) removeBtn.hidden = Sel.kind !== "list";
+    const disabled = Sel.ids.size === 0;
+    ["selPlayNext", "selPlayLast", "selAddList", "selRemove"].forEach((id) => {
+      const b = $("#" + id); if (b) b.disabled = disabled;
+    });
+  }
+  function selToggleMode(kind) {
+    if (Sel.active && Sel.kind === kind) { selExit(); return; }
+    Sel.active = true; Sel.kind = kind; Sel.ids.clear();
+    selUpdateUI();
+    if (kind === "explorer") renderExplorer(); else renderListDetail();
+  }
+  function selExit() {
+    if (!Sel.active) return;
+    const kind = Sel.kind;
+    Sel.active = false; Sel.kind = null; Sel.ids.clear();
+    selUpdateUI();
+    if (kind === "explorer") renderExplorer(); else if (kind === "list") renderListDetail();
+  }
+  function selToggleItem(key, row) {
+    if (Sel.ids.has(key)) Sel.ids.delete(key); else Sel.ids.add(key);
+    if (row) row.classList.toggle("lib-row--checked", Sel.ids.has(key));
+    selUpdateUI();
+  }
+  /* items {name,uri,...} en el orden mostrado, según el modo activo */
+  function selGatherItems() {
+    if (Sel.kind === "explorer") {
+      const lvl = expStack[expStack.length - 1]; if (!lvl) return [];
+      return lvl.entries.filter((e) => !e.dir && Sel.ids.has(e.uri))
+        .map((e) => ({ name: e.name, uri: e.uri, path: e.path || null }));
+    }
+    if (Sel.kind === "list") {
+      const l = findList(detailId); if (!l) return [];
+      return l.items.filter((it, i) => Sel.ids.has(i))
+        .map((it) => ({ name: it.name, uri: it.uri, ytId: it.ytId || null, uploader: it.uploader || null, thumb: it.thumb || null }));
+    }
+    return [];
+  }
+
   /* ============================ EXPLORADOR ============================ */
   // pila de navegación: cada nivel { uri|null (null=raíces), name, entries:[] }
   let expStack = [];
   function explorerSupported() { return hasBridge("listRoots") && hasBridge("browse"); }
 
+  function updateExplorerToolbar() {
+    const atRoot = !expStack.length;
+    const hasAudios = !atRoot && currentAudios().length > 0;
+    const selecting = Sel.active && Sel.kind === "explorer";
+    const addAllBtn = $("#libExpAddAll"); if (addAllBtn) addAllBtn.hidden = !hasAudios || selecting;
+    const selBtn = $("#libExpSelect"); if (selBtn) selBtn.hidden = !hasAudios;
+    const addRootBtn = $("#libAddRoot"); if (addRootBtn) addRootBtn.hidden = !atRoot;
+  }
+
   function renderExplorer() {
     const list = $("#libExpItems");
     if (!explorerSupported()) {
       list.innerHTML = '<div class="lib-empty">' + T("ex_no_roots") + "</div>";
-      $("#libUp").hidden = true; $("#libPath").textContent = ""; return;
+      $("#libUp").hidden = true; $("#libPath").textContent = ""; updateExplorerToolbar(); return;
     }
     if (!expStack.length) {
       // nivel raíces
@@ -205,6 +312,7 @@
       $("#libUp").hidden = true;
       $("#libPath").textContent = T("ex_roots");
       list.innerHTML = "";
+      updateExplorerToolbar();
       if (!roots.length) { list.innerHTML = '<div class="lib-empty">' + T("ex_no_roots") + "</div>"; return; }
       roots.forEach((r) => list.appendChild(rootRow(r)));
       return;
@@ -213,6 +321,7 @@
     $("#libUp").hidden = false;
     $("#libPath").textContent = lvl.name;
     list.innerHTML = "";
+    updateExplorerToolbar();
     if (!lvl.entries.length) { list.innerHTML = '<div class="lib-empty">' + T("ex_empty") + "</div>"; return; }
     renderEntriesChunked(list, lvl.entries);
   }
@@ -392,15 +501,21 @@
   }
   function audioRow(e, i) {
     const row = document.createElement("div");
-    row.className = "lib-row lib-row--audio";
-    row.innerHTML = '<span class="lib-row__ic">' + IC.audio + '</span><span class="lib-row__name"></span>' +
-      '<button class="lib-row__act" type="button" aria-label="…">' + IC.dots + '</button>';
+    const selecting = Sel.active && Sel.kind === "explorer";
+    row.className = "lib-row lib-row--audio" + (selecting && Sel.ids.has(e.uri) ? " lib-row--checked" : "");
+    row.innerHTML = (selecting ? '<span class="lib-row__chk">' + IC.check + '</span>' : '<span class="lib-row__ic">' + IC.audio + '</span>') +
+      '<span class="lib-row__name"></span>' +
+      (selecting ? '' : '<button class="lib-row__act" type="button" aria-label="…">' + IC.dots + '</button>');
     row.querySelector(".lib-row__name").textContent = stripExt(e.name);
-    row.addEventListener("click", () => playExplorerAudio(i));
-    row.querySelector(".lib-row__act").addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      openTrackMenu({ kind: "explorer", index: i, item: { name: e.name, uri: e.uri, path: e.path || null } });
-    });
+    if (selecting) {
+      row.addEventListener("click", () => selToggleItem(e.uri, row));
+    } else {
+      row.addEventListener("click", () => playExplorerAudio(i));
+      row.querySelector(".lib-row__act").addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        openTrackMenu({ kind: "explorer", index: i, item: { name: e.name, uri: e.uri, path: e.path || null } });
+      });
+    }
     return row;
   }
 
@@ -410,12 +525,14 @@
     try { entries = JSON.parse(window.DSKBridge.browse(uri) || "[]"); } catch (e) {}
     expStack.push({ uri: uri, name: name, entries: entries });
     renderExplorer();
+    saveViewState();
   }
   function explorerUp() {
     if (!expStack.length) return false;
     expSearchToken++;
     expStack.pop();
     renderExplorer();
+    saveViewState();
     return true;
   }
   function currentAudios() {
@@ -439,8 +556,15 @@
 
   /* ============================ LISTAS ============================ */
   let detailId = null;
-  function showListsIndex() { detailId = null; $("#libListsIndex").hidden = false; $("#libListDetail").hidden = true; }
-  function showListDetail(id) { detailId = id; $("#libListsIndex").hidden = true; $("#libListDetail").hidden = false; renderListDetail(); }
+  function showListsIndex() {
+    if (Sel.active && Sel.kind === "list") { Sel.active = false; Sel.kind = null; Sel.ids.clear(); selUpdateUI(); }
+    detailId = null; $("#libListsIndex").hidden = false; $("#libListDetail").hidden = true;
+    if (activeTab === "lists") saveViewState();
+  }
+  function showListDetail(id) {
+    detailId = id; $("#libListsIndex").hidden = true; $("#libListDetail").hidden = false; renderListDetail();
+    if (activeTab === "lists") saveViewState();
+  }
 
   function renderLists() {
     if (detailId && findList(detailId)) { renderListDetail(); return; }
@@ -491,28 +615,37 @@
     $("#libListTitle").textContent = l.name;
     const host = $("#libListTracks");
     host.innerHTML = "";
+    const selBtn = $("#libListSelect"); if (selBtn) selBtn.hidden = !l.items.length;
     if (!l.items.length) { host.innerHTML = '<div class="lib-empty">' + T("list_empty") + "</div>"; return; }
     // ¿qué pista de ESTA lista está sonando ahora?
     const snap = DSKQueue.snapshot();
     const activeUri = (snap.source && snap.source.type === "list" && snap.source.id === detailId &&
                        snap.index >= 0 && snap.items[snap.index]) ? snap.items[snap.index].uri : null;
+    const selecting = Sel.active && Sel.kind === "list";
     l.items.forEach((it, i) => {
       const row = document.createElement("div");
-      row.className = "lib-row lib-row--audio" + (activeUri && it.uri === activeUri ? " lib-row--active" : "");
-      row.innerHTML = '<span class="lib-row__ord"></span><span class="lib-row__name"></span>' +
-        '<button class="lib-row__mv" data-d="-1" type="button" aria-label="▲">▲</button>' +
-        '<button class="lib-row__mv" data-d="1" type="button" aria-label="▼">▼</button>' +
-        '<button class="lib-row__act" type="button" aria-label="…">' + IC.dots + '</button>';
-      row.querySelector(".lib-row__ord").textContent = (i + 1);
-      row.querySelector(".lib-row__name").textContent = stripExt(it.name);
-      row.addEventListener("click", () => playList(detailId, i));
-      row.querySelectorAll(".lib-row__mv").forEach((mb) => mb.addEventListener("click", (e) => {
-        e.stopPropagation(); listMove(detailId, i, parseInt(mb.getAttribute("data-d"), 10));
-      }));
-      row.querySelector(".lib-row__act").addEventListener("click", (e) => {
-        e.stopPropagation();
-        openTrackMenu({ kind: "list", index: i, listId: detailId, item: { name: it.name, uri: it.uri, ytId: it.ytId || null, uploader: it.uploader || null, thumb: it.thumb || null } });
-      });
+      row.className = "lib-row lib-row--audio" + (activeUri && it.uri === activeUri ? " lib-row--active" : "") +
+        (selecting && Sel.ids.has(i) ? " lib-row--checked" : "");
+      if (selecting) {
+        row.innerHTML = '<span class="lib-row__chk">' + IC.check + '</span><span class="lib-row__name"></span>';
+        row.querySelector(".lib-row__name").textContent = stripExt(it.name);
+        row.addEventListener("click", () => selToggleItem(i, row));
+      } else {
+        row.innerHTML = '<span class="lib-row__ord"></span><span class="lib-row__name"></span>' +
+          '<button class="lib-row__mv" data-d="-1" type="button" aria-label="▲">▲</button>' +
+          '<button class="lib-row__mv" data-d="1" type="button" aria-label="▼">▼</button>' +
+          '<button class="lib-row__act" type="button" aria-label="…">' + IC.dots + '</button>';
+        row.querySelector(".lib-row__ord").textContent = (i + 1);
+        row.querySelector(".lib-row__name").textContent = stripExt(it.name);
+        row.addEventListener("click", () => playList(detailId, i));
+        row.querySelectorAll(".lib-row__mv").forEach((mb) => mb.addEventListener("click", (e) => {
+          e.stopPropagation(); listMove(detailId, i, parseInt(mb.getAttribute("data-d"), 10));
+        }));
+        row.querySelector(".lib-row__act").addEventListener("click", (e) => {
+          e.stopPropagation();
+          openTrackMenu({ kind: "list", index: i, listId: detailId, item: { name: it.name, uri: it.uri, ytId: it.ytId || null, uploader: it.uploader || null, thumb: it.thumb || null } });
+        });
+      }
       host.appendChild(row);
     });
     const act = host.querySelector(".lib-row--active");
@@ -739,6 +872,45 @@
     const up = $("#libUp"); if (up) up.addEventListener("click", explorerUp);
     const addRoot = $("#libAddRoot"); if (addRoot) addRoot.addEventListener("click", () => { if (hasBridge("addExplorerRoot")) window.DSKBridge.addExplorerRoot(); });
 
+    // "añadir todo" (carpeta actual del explorador → lista)
+    const addAllBtn = $("#libExpAddAll");
+    if (addAllBtn) addAllBtn.addEventListener("click", () => {
+      const audios = currentAudios();
+      if (!audios.length) { UI.toast(T("ex_empty")); return; }
+      openListPick(audios.map((a) => ({ name: a.name, uri: a.uri, path: a.path || null })));
+    });
+
+    // selección múltiple: explorador y detalle de lista
+    const expSelBtn = $("#libExpSelect"); if (expSelBtn) expSelBtn.addEventListener("click", () => selToggleMode("explorer"));
+    const listSelBtn = $("#libListSelect"); if (listSelBtn) listSelBtn.addEventListener("click", () => selToggleMode("list"));
+
+    // barra de acciones de selección múltiple
+    const selPlayNext = $("#selPlayNext");
+    if (selPlayNext) selPlayNext.addEventListener("click", () => {
+      const items = selGatherItems(); if (!items.length) return;
+      DSKQueue.enqueueNext(items); UI.toast(T("q_added_next")); selExit();
+    });
+    const selPlayLast = $("#selPlayLast");
+    if (selPlayLast) selPlayLast.addEventListener("click", () => {
+      const items = selGatherItems(); if (!items.length) return;
+      DSKQueue.enqueueLast(items); UI.toast(T("q_added_last")); selExit();
+    });
+    const selAddList = $("#selAddList");
+    if (selAddList) selAddList.addEventListener("click", () => {
+      const items = selGatherItems(); if (!items.length) return;
+      openListPick(items); selExit();
+    });
+    const selRemove = $("#selRemove");
+    if (selRemove) selRemove.addEventListener("click", () => {
+      if (Sel.kind !== "list" || !Sel.ids.size) return;
+      const lists = loadLists(); const l = lists.find((x) => x.id === detailId); if (!l) return;
+      Array.from(Sel.ids).sort((a, b) => b - a).forEach((i) => l.items.splice(i, 1));
+      saveLists(lists);
+      UI.toast(T("q_removed"));
+      selExit();
+    });
+    const selCancel = $("#selCancel"); if (selCancel) selCancel.addEventListener("click", selExit);
+
     // buscador de archivos/carpetas (pestaña Archivos)
     const expSearch = $("#libExpSearch"), expSearchClear = $("#libExpSearchClear");
     if (expSearch) {
@@ -761,7 +933,7 @@
       });
     }
     const sq = $("#libSaveQueue"); if (sq) sq.addEventListener("click", saveQueueAsList);
-    const btnLibrary = $("#btnLibrary"); if (btnLibrary) btnLibrary.addEventListener("click", (e) => { e.stopPropagation(); DSKQueue.open(); setTab("lists"); });
+    const btnLibrary = $("#btnLibrary"); if (btnLibrary) btnLibrary.addEventListener("click", (e) => { e.stopPropagation(); openLibraryRemembered(); });
     const nl = $("#libNewList"); if (nl) nl.addEventListener("click", () => askListName(null, (name) => { const lists = loadLists(); lists.push({ id: newId(), name: name, items: [] }); saveLists(lists); UI.toast(T("list_created")); renderLists(); }));
     const lb = $("#libListBack"); if (lb) lb.addEventListener("click", () => { showListsIndex(); renderLists(); });
     const lp = $("#libListPlay"); if (lp) lp.addEventListener("click", () => { if (detailId) playList(detailId, 0); });

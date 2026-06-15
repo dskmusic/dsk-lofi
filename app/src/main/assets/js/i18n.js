@@ -138,6 +138,8 @@
         ex_up: "Up", ex_empty: "Empty folder", ex_no_roots: "No folders yet — add one to browse.",
         ex_play_folder: "Play folder", ex_root_added: "Folder added", ex_root_removed: "Folder removed",
         ex_pending: "Needs access", ex_pending_hint: "Tap to relink this folder",
+        ex_add_all: "Add all to a playlist",
+        sel_select: "Select",
         ex_search: "Search files and folders…", ex_search_results: "SEARCH RESULTS", ex_search_empty: "No matches found.",
         lists_title: "PLAYLISTS", lists_new: "NEW PLAYLIST", lists_empty: "No playlists yet.",
         list_name_ph: "Playlist name", list_create: "CREATE",
@@ -151,6 +153,7 @@
         m_add_list: "Add to playlist…", m_new_list: "New playlist…", m_remove: "Remove from queue",
         q_save_as_list: "SAVE QUEUE AS PLAYLIST", q_added_next: "Added to play next", q_added_last: "Added to end",
         q_removed: "Removed from queue", q_added_list: "Added to playlist", q_pick_list: "CHOOSE PLAYLIST",
+        q_added_list_n: "{n} tracks added to playlist",
         viz_cover: "COVER BACKDROP", help_title: "HOW TO USE", help_aria: "Help",
         imp_missing_roots: "{n} folders need access — add them in Files", lib_open: "LIBRARY",
 
@@ -330,6 +333,8 @@
         ex_up: "Subir", ex_empty: "Carpeta vacía", ex_no_roots: "Aún no hay carpetas — añade una para explorar.",
         ex_play_folder: "Reproducir carpeta", ex_root_added: "Carpeta añadida", ex_root_removed: "Carpeta quitada",
         ex_pending: "Sin permiso", ex_pending_hint: "Toca para volver a vincular esta carpeta",
+        ex_add_all: "Añadir todo a una lista",
+        sel_select: "Seleccionar",
         ex_search: "Buscar archivos y carpetas…", ex_search_results: "RESULTADOS DE BÚSQUEDA", ex_search_empty: "Sin resultados.",
         lists_title: "LISTAS", lists_new: "NUEVA LISTA", lists_empty: "Aún no hay listas.",
         list_name_ph: "Nombre de la lista", list_create: "CREAR",
@@ -343,6 +348,7 @@
         m_add_list: "Añadir a lista…", m_new_list: "Nueva lista…", m_remove: "Quitar de la cola",
         q_save_as_list: "GUARDAR COLA COMO LISTA", q_added_next: "Se reproducirá a continuación", q_added_last: "Añadido al final",
         q_removed: "Quitado de la cola", q_added_list: "Añadido a la lista", q_pick_list: "ELEGIR LISTA",
+        q_added_list_n: "{n} pistas añadidas a la lista",
         viz_cover: "CARÁTULA DE FONDO", help_title: "CÓMO SE USA", help_aria: "Ayuda",
         imp_missing_roots: "{n} carpetas necesitan permiso — añádelas en Archivos", lib_open: "BIBLIOTECA",
 
