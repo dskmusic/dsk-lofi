@@ -170,16 +170,28 @@
   }
 
   // Abre la biblioteca en la pestaña Online y busca el enlace de YouTube recibido
-  // (compartido a la app). Lo invoca el bridge nativo vía window.DSKOpenYouTubeUrl.
-  window.DSKOpenYouTubeUrl = function (url) {
+  // (compartido a la app). El shim temprano de index.html encola la URL si llega
+  // antes de que esto exista; aquí registramos la implementación real.
+  function realOpenYouTubeUrl(url) {
     if (!url) return;
+    const hold = typeof window.__dskSplashHold === "function";
+    if (hold) window.__dskSplashHold();
     try { DSKQueue.open(); } catch (e) {}
     setTab("online");
-    // pequeño margen para que el panel online esté visible antes de buscar
     setTimeout(() => {
       if (window.DSKYoutubeUI && DSKYoutubeUI.openQuery) DSKYoutubeUI.openQuery(url);
+      if (hold) requestAnimationFrame(() => window.__dskSplashRelease());
     }, 120);
-  };
+  }
+  window.__dskRealOpenYT = realOpenYouTubeUrl;
+  window.DSKOpenYouTubeUrl = realOpenYouTubeUrl;
+  // procesar un enlace que hubiera llegado antes de estar listos
+  if (window.__dskPendingYTUrl) {
+    const pend = window.__dskPendingYTUrl; window.__dskPendingYTUrl = null;
+    // liberamos el hold puesto por el shim; realOpenYouTubeUrl pondrá el suyo
+    if (typeof window.__dskSplashRelease === "function") window.__dskSplashRelease();
+    realOpenYouTubeUrl(pend);
+  }
 
   /* ============================ MENÚ ⋮ ============================ */
   // ctx: { kind:'queue'|'explorer'|'list', index?, item?, listId? }
@@ -875,7 +887,9 @@
           thumb: (d.thumbs && d.thumbs[i]) || ""
         })).filter((x) => x.ytId);
         if (!items.length) return;
-        DSKQueue.load(items, d.index || 0, d.source || { type: "online", name: "YouTube" }, false, d.pos || 0);
+        // prepareOnly=true: no resolver el stream de YouTube ahora (la URL caduca);
+        // se resuelve al pulsar play.
+        DSKQueue.load(items, d.index || 0, d.source || { type: "online", name: "YouTube" }, false, d.pos || 0, true);
       }
     } catch (e) {}
   }

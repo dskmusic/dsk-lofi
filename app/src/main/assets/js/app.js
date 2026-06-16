@@ -252,6 +252,7 @@
   const dirInput = $("#dirInput");
   const nativeAudio = $("#nativeAudio");
   let playerOnlyMode = false;
+  let ytPendingResolve = false;   // cola YT restaurada en frío: stream sin resolver aún
   let nativeUrlObj = null;
   let peaks = null;
 
@@ -936,13 +937,14 @@
 
   function renderPlaylist() {
     const wrap = $("#playlist");
-    const isQueue = currentSource && (currentSource.type === "list" || currentSource.type === "folder" || currentSource.type === "online");
-    const show = playlist.length > 1 || (playlist.length === 1 && isQueue);
-    if (!show) {
-      wrap.hidden = true;
+    // La mini-lista permanece SIEMPRE visible con su tamaño fijo, tenga o no
+    // contenido, para que la interfaz nunca se redimensione ni se pierdan controles.
+    wrap.hidden = false;
+    if (!playlist.length) {
+      $("#playlistCount").textContent = "0 / 0";
+      $("#playlistItems").innerHTML = "";
       return;
     }
-    wrap.hidden = false;
     const count = (plIndex + 1) + " / " + playlist.length;
     $("#playlistCount").textContent = count;
     renderPlaylistInto($("#playlistItems"), false);
@@ -994,7 +996,7 @@
     if (typeof o.nativeIndex === "number") return { name: o.name, nativeIndex: o.nativeIndex };
     return null;
   }
-  function loadItems(items, startIndex, source, autoplay, restorePos) {
+  function loadItems(items, startIndex, source, autoplay, restorePos, prepareOnly) {
     const list = (items || []).map(plItemFrom).filter(Boolean);
     if (!list.length) return;
     playlist = list;
@@ -1002,11 +1004,13 @@
     if (shuffle) buildShuffleBag(true);
     currentSource = source || { type: "folder", name: "" };
     pendingRestorePos = (restorePos && restorePos > 0.3) ? restorePos : 0;
+    ytPendingResolve = false;
     renderPlaylist(); emitQueue();
-    loadFile(playlist[plIndex], autoplay !== false);
+    loadFile(playlist[plIndex], autoplay !== false, prepareOnly === true);
   }
   function playAt(i) {
     if (i < 0 || i >= playlist.length) return;
+    ytPendingResolve = false;
     plIndex = i; plQuery = ""; syncSearchUI(); renderPlaylist(); emitQueue();
     loadFile(playlist[i], true);
   }
@@ -1249,7 +1253,7 @@
     }
   }
 
-  async function loadFile(track, autoplay) {
+  async function loadFile(track, autoplay, prepareOnly) {
     if (!track) return;
     // compat: si llega un File directo (web antiguo), envolverlo
     if (track instanceof File) track = { name: track.name, file: track };
@@ -1262,6 +1266,22 @@
     curDurationOverride = 0;   // se fija abajo solo para YouTube
     updateVizCover();
     const coverTok = ++coverToken;
+
+    // ---- YT restaurado en frío: preparar SIN resolver el stream (la URL de
+    //      YouTube caduca). Se deja la pista lista; al pulsar play se recarga. ----
+    if (prepareOnly && track.ytId) {
+      ytPendingResolve = true;
+      document.body.classList.add("has-track");
+      sizeCanvases();
+      setTrackName(track.name.replace(/\.[^.]+$/, ""));
+      setArtist(track.uploader || "");
+      $("#timeCur").textContent = fmt.time(0);
+      peaks = null;
+      setPlayIcon(false);
+      if (track.thumb) ytSetCover(track.thumb, coverTok);
+      $("#loaderBusy").hidden = true; $("#waveBusy").hidden = true; $("#loaderIdle").hidden = true;
+      return;
+    }
 
     // ---- modo solo reproductor: carga instantánea con <audio> nativo ----
     if (playerOnlyMode) {
@@ -1419,6 +1439,9 @@
   /* controles invocados desde la notificación / auriculares / pantalla bloqueada */
   window.DSKControls = {
     async toggle() {
+      if (ytPendingResolve && playlist[plIndex] && playlist[plIndex].ytId) {
+        ytPendingResolve = false; await loadFile(playlist[plIndex], true); return;
+      }
       const loaded = playerOnlyMode ? !!nativeAudio.src : !!Engine.buffer;
       if (!loaded) return;
       if (Engine.playing) { setPlayIcon(false); await Engine.pause(); }
@@ -1426,9 +1449,12 @@
     },
     // orden determinista e idempotente (la usa la notificación: play/pause según destino)
     async setPlaying(want) {
+      want = (want === true || want === "true");
+      if (want && ytPendingResolve && playlist[plIndex] && playlist[plIndex].ytId) {
+        ytPendingResolve = false; await loadFile(playlist[plIndex], true); return;
+      }
       const loaded = playerOnlyMode ? !!nativeAudio.src : !!Engine.buffer;
       if (!loaded) return;
-      want = (want === true || want === "true");
       if (Engine.playing === want) return;
       if (want) { await Engine.play(); setPlayIcon(true); keepAliveOn(); }
       else { setPlayIcon(false); await Engine.pause(); }
@@ -1445,6 +1471,13 @@
 
   function bindTransport() {
     $("#btnPlay").addEventListener("click", async () => {
+      // cola de YouTube restaurada en frío: aún no se resolvió el stream.
+      // Al pulsar play, cargamos de verdad la pista actual y la reproducimos.
+      if (ytPendingResolve && playlist[plIndex] && playlist[plIndex].ytId) {
+        ytPendingResolve = false;
+        await loadFile(playlist[plIndex], true);
+        return;
+      }
       // ¿hay pista cargada? en modo reproductor el audio va por <audio> (sin Engine.buffer)
       const loaded = playerOnlyMode ? !!nativeAudio.src : !!Engine.buffer;
       if (!loaded) { pickAudio(); return; }
@@ -3050,8 +3083,18 @@
 
   /* ========================= INIT ========================= */
   /* funde la pantalla de carga cuando el layout ya está estable */
-  const SPLASH_MIN_MS = 2200;   // tiempo mínimo en pantalla (sube este valor si aún ves saltos)
+  const SPLASH_MIN_MS = 900;    // mínimo en pantalla para que el propio splash no parpadee
+  let splashHidden = false;
+  // __dskSplashHolds / __dskSplashHold ya se definieron en el shim inline de index.html.
+  // Aquí definimos la liberación real, que oculta el splash si ya no quedan holds.
+  window.__dskSplashRelease = function () {
+    window.__dskSplashHolds = Math.max(0, (window.__dskSplashHolds || 0) - 1);
+    if (window.__dskSplashHolds === 0 && window.__dskSplashWantHide) hideSplash();
+  };
   function hideSplash() {
+    if (splashHidden) return;
+    if ((window.__dskSplashHolds || 0) > 0) { window.__dskSplashWantHide = true; return; }
+    splashHidden = true;
     const s = document.getElementById("splash");
     if (!s) return;
     s.classList.add("is-done");
@@ -3059,11 +3102,11 @@
   }
   function scheduleSplashHide() {
     const fire = () => {
-      // performance.now() = ms desde el inicio de la navegación
       const wait = Math.max(0, SPLASH_MIN_MS - performance.now());
-      setTimeout(hideSplash, wait);
+      setTimeout(() => {
+        requestAnimationFrame(() => requestAnimationFrame(hideSplash));
+      }, wait);
     };
-    // esperar a que TODO esté cargado (estilos, fuentes, imágenes) y luego el mínimo
     if (document.readyState === "complete") fire();
     else window.addEventListener("load", fire, { once: true });
   }
@@ -3083,6 +3126,7 @@
     buildGenPresets();
     syncAll();
     refreshDynamicText();
+    renderPlaylist();   // mini-lista visible desde el arranque (vacía al principio)
 
     /* loader interactions */
     $("#loaderIdle").addEventListener("click", pickAudio);

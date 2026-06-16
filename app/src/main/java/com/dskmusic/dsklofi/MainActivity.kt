@@ -492,8 +492,8 @@ class MainActivity : Activity() {
                 injectFileInputFix()
                 // entregar audio entrante (abrir/compartir) una vez la web está lista
                 view?.postDelayed({ deliverIncomingAudio() }, 350)
-                // entregar enlace de YouTube compartido
-                view?.postDelayed({ deliverIncomingYouTube() }, 400)
+                // entregar enlace de YouTube compartido (pronto, para retener el splash)
+                view?.postDelayed({ deliverIncomingYouTube() }, 60)
                 // si no hubo audio entrante, restaurar la última cola
                 view?.postDelayed({ tryRestoreQueue() }, 500)
             }

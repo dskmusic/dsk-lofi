@@ -29,6 +29,21 @@
         if (localStorage.getItem('dsklofi.splash') !== '0')
           document.documentElement.classList.add('splash-on');
       } catch (e) { document.documentElement.classList.add('splash-on'); }
+      // Cola temprana: si el bridge comparte un enlace de YouTube antes de que la
+      // app esté lista, lo guardamos y retenemos el splash hasta procesarlo.
+      window.__dskPendingYTUrl = null;
+      window.__dskSplashHolds = 0;
+      window.__dskSplashHold = function () { window.__dskSplashHolds++; };
+      window.__dskSplashRelease = function () { /* lo redefine app.js */ };
+      window.DSKOpenYouTubeUrl = function (url) {
+        // si la implementación real aún no está, encolar y retener splash
+        if (!window.__dskRealOpenYT) {
+          window.__dskPendingYTUrl = url;
+          window.__dskSplashHold();
+          return;
+        }
+        window.__dskRealOpenYT(url);
+      };
     })();
   </script>
   <link rel="stylesheet" href="css/app.css">
@@ -100,7 +115,7 @@
       </div>
     </div>
 
-    <div class="playlist" id="playlist" hidden="hidden">
+    <div class="playlist" id="playlist">
       <div class="playlist__head">
         <button class="playlist__title playlist__title--btn" id="plTitleBtn" type="button"><span class="playlist__title-ic" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24"><line x1="8" y1="6" x2="20" y2="6"></line><line x1="8" y1="12" x2="20" y2="12"></line><line x1="8" y1="18" x2="20" y2="18"></line><line x1="4" y1="6" x2="4.01" y2="6"></line><line x1="4" y1="12" x2="4.01" y2="12"></line><line x1="4" y1="18" x2="4.01" y2="18"></line></svg></span><span class="playlist__title-txt"></span></button>
         <div class="plsearch">
