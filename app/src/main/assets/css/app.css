@@ -635,6 +635,7 @@
     .yt-foot { flex: none; }
     .yt-ver { text-align: center; color: var(--color-text-faint); font-size: var(--fs-tiny, 11px); line-height: 1.5; padding: 0 var(--space-5) var(--space-6); opacity: 0.8; }
     .yt-ver__new { color: var(--acc); font-weight: 600; }
+    .yt-ver__link { color: var(--acc); text-decoration: underline; }
 
     /* visualizer picker grid */
     .viz-grid {

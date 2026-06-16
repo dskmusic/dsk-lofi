@@ -495,6 +495,14 @@
   /* ============================ EXPLORADOR ============================ */
   // pila de navegación: cada nivel { uri|null (null=raíces), name, entries:[] }
   let expStack = [];
+  let rootScroll = 0;   // scroll guardado del nivel raíz del explorador
+  // guarda la posición de scroll actual del explorador en su nivel
+  function saveExpScroll() {
+    const list = document.getElementById("libExpItems");
+    if (!list) return;
+    if (expStack.length) expStack[expStack.length - 1].scroll = list.scrollTop;
+    else rootScroll = list.scrollTop;
+  }
   function explorerSupported() { return hasBridge("listRoots") && hasBridge("browse"); }
 
   function updateExplorerToolbar() {
@@ -506,8 +514,11 @@
     const addRootBtn = $("#libAddRoot"); if (addRootBtn) addRootBtn.hidden = !atRoot;
   }
 
-  function renderExplorer() {
+  function renderExplorer(scrollTarget) {
     const list = $("#libExpItems");
+    // por defecto conserva el scroll actual (re-render por selección, etc.);
+    // enterFolder pasa 0 (ir al inicio) y explorerUp pasa el scroll guardado.
+    const keep = (scrollTarget != null) ? scrollTarget : (list ? list.scrollTop : 0);
     if (!explorerSupported()) {
       list.innerHTML = '<div class="lib-empty">' + T("ex_no_roots") + "</div>";
       $("#libUp").hidden = true; $("#libPath").textContent = ""; updateExplorerToolbar(); return;
@@ -522,6 +533,7 @@
       updateExplorerToolbar();
       if (!roots.length) { list.innerHTML = '<div class="lib-empty">' + T("ex_no_roots") + "</div>"; return; }
       roots.forEach((r) => list.appendChild(rootRow(r)));
+      list.scrollTop = keep;
       return;
     }
     const lvl = expStack[expStack.length - 1];
@@ -529,13 +541,14 @@
     $("#libPath").textContent = lvl.name;
     list.innerHTML = "";
     updateExplorerToolbar();
-    if (!lvl.entries.length) { list.innerHTML = '<div class="lib-empty">' + T("ex_empty") + "</div>"; return; }
-    renderEntriesChunked(list, lvl.entries);
+    if (!lvl.entries.length) { list.innerHTML = '<div class="lib-empty">' + T("ex_empty") + "</div>"; list.scrollTop = keep; return; }
+    renderEntriesChunked(list, lvl.entries, keep);
   }
 
   /* Inserta filas en lotes vía requestAnimationFrame para no bloquear el hilo
-     principal cuando hay muchos archivos (evita el "congelado" al refrescar). */
-  function renderEntriesChunked(list, entries) {
+     principal cuando hay muchos archivos (evita el "congelado" al refrescar).
+     targetScroll se reaplica en cada lote hasta que hay altura suficiente. */
+  function renderEntriesChunked(list, entries, targetScroll) {
     const CHUNK = 40;
     const token = {};
     list.__renderToken = token;
@@ -549,6 +562,7 @@
         frag.appendChild(e.dir ? folderRow(e) : audioRow(e, idx));
       }
       list.appendChild(frag);
+      if (targetScroll != null) list.scrollTop = targetScroll;
       if (idx < entries.length) requestAnimationFrame(step);
     }
     step();
@@ -733,17 +747,19 @@
 
   function enterFolder(uri, name) {
     expSearchToken++; // cancela cualquier búsqueda en curso
+    saveExpScroll();  // recuerda dónde estabas antes de entrar
     let entries = [];
     try { entries = JSON.parse(window.DSKBridge.browse(uri) || "[]"); } catch (e) {}
     expStack.push({ uri: uri, name: name, entries: entries });
-    renderExplorer();
+    renderExplorer(0);   // la carpeta nueva empieza arriba
     saveViewState();
   }
   function explorerUp() {
     if (!expStack.length) return false;
     expSearchToken++;
     expStack.pop();
-    renderExplorer();
+    const target = expStack.length ? (expStack[expStack.length - 1].scroll || 0) : rootScroll;
+    renderExplorer(target);   // vuelve a donde estabas antes de entrar
     saveViewState();
     return true;
   }

@@ -91,18 +91,27 @@
     if (cv) checkLatest(cv);
   }
   async function checkLatest(cv) {
-    let latest = "";
+    let latest = "", url = "";
     try {
       const r = await fetch("https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases/latest",
         { headers: { Accept: "application/vnd.github+json" } });
-      if (r.ok) { const j = await r.json(); latest = (j && j.tag_name) ? j.tag_name : ""; }
+      if (r.ok) { const j = await r.json(); latest = (j && j.tag_name) ? j.tag_name : ""; url = (j && j.html_url) ? j.html_url : ""; }
     } catch (e) {}
     const el = $("#ytVer"); if (!el || !latest) return;
+    if (!url) url = "https://github.com/TeamNewPipe/NewPipeExtractor/releases/tag/" + latest;
     const norm = (s) => String(s).replace(/^v/, "").trim();
     const newer = norm(latest) !== norm(cv);
     el.innerHTML = esc(t("on_lib_using")) + " " + esc(cv) + "<br>" +
-      esc(t("on_lib_latest")) + " " + esc(latest) +
+      esc(t("on_lib_latest")) + ' <a class="yt-ver__link" data-ext="' + esc(url) + '" href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(latest) + "</a>" +
       (newer ? ' <span class="yt-ver__new">' + esc(t("on_lib_update")) + "</span>" : " ✓");
+  }
+
+  // abre un enlace fuera del WebView (navegador del sistema)
+  function openExt(url) {
+    if (!url) return;
+    try { if (window.AndroidFileManager && AndroidFileManager.openExternal) { AndroidFileManager.openExternal(url); return; } } catch (e) {}
+    try { if (window.DSKBridge && DSKBridge.openExternal) { DSKBridge.openExternal(url); return; } } catch (e) {}
+    try { window.open(url, "_blank", "noopener"); } catch (e) {}
   }
 
   const IC_DL = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 11 5 5 5-5"></path><path d="M5 21h14"></path></svg>';
@@ -467,6 +476,8 @@
       items.addEventListener("pointerleave", clearLp);
 
       items.addEventListener("click", (e) => {
+        const ext = e.target.closest("[data-ext]");
+        if (ext) { e.preventDefault(); e.stopPropagation(); openExt(ext.getAttribute("data-ext")); return; }
         if (lpFired) { lpFired = false; e.preventDefault(); e.stopPropagation(); return; }
         if (sel.on) {
           const row = e.target.closest(".yt-row");
