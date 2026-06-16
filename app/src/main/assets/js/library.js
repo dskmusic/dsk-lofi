@@ -178,7 +178,9 @@
       '<h4>Lista, Archivos y Listas</h4>' +
       '<p>En esa vista hay tres pestañas: <b>En curso</b> (la cola actual), <b>Archivos</b> (explorador de carpetas) y <b>Listas</b> (crea y edita tus listas). El botón <b>⋮</b> de cada pista permite reproducir ahora, en siguiente, al final o añadir a una lista. La app <b>recuerda</b> la última pestaña, carpeta o lista que tenías abierta.</p>' +
       '<h4>Añadir todo y selección múltiple</h4>' +
-      '<p>Dentro de una carpeta, el botón <b>añadir todo</b> mete todas sus pistas en una lista de una vez. El botón <b>seleccionar</b> (✓) activa la selección múltiple en Archivos y en el detalle de una lista: marca varias pistas y usa la barra inferior para reproducir <b>siguiente</b>, <b>al final</b>, <b>añadir a lista</b> o <b>eliminar</b> (en listas).</p>' +
+      '<p>Dentro de una carpeta, el botón <b>añadir todo</b> mete todas sus pistas en una lista de una vez. La selección múltiple se activa con el botón <b>seleccionar</b> (✓) o <b>manteniendo pulsada</b> una pista (en Archivos, en el detalle de una lista y en Online). Marca varias pistas y usa la barra inferior para reproducir <b>siguiente</b>, <b>al final</b>, <b>añadir a lista</b>, <b>reproducir</b>/<b>descargar</b> (en Online) o <b>eliminar</b> (en listas). Al cambiar de pestaña o salir, la selección se desactiva sola.</p>' +
+      '<h4>Pistas y duración</h4>' +
+      '<p>En <b>Archivos</b>, cada carpeta muestra su <b>nº de pistas</b> y la <b>duración total</b>; las <b>Listas</b> muestran lo mismo. El dato se guarda y solo se <b>recalcula la duración cuando cambia el número de elementos</b>, para no gastar recursos en balde.</p>' +
       '<h4>Carpetas y permisos</h4>' +
       '<p>Si al importar la configuración una carpeta queda <b>sin permiso</b>, aparece marcada en Archivos: tócala para volver a vincularla sin perder tus listas.</p>' +
       '<h4>Efectos LoFi</h4>' +
@@ -189,10 +191,12 @@
       '<p>Pulsa el ojo para elegir entre varios visualizadores y activar la <b>carátula de fondo</b> difuminada.</p>' +
       '<h4>Carátula a pantalla completa</h4>' +
       '<p>El icono de <b>imagen</b> (abajo a la izquierda del visualizador) abre la carátula a pantalla completa —la del archivo (ID3) o la miniatura de YouTube— con opciones de <b>guardar</b> en el dispositivo y <b>compartir</b>.</p>' +
-      '<h4>Letras</h4>' +
-      '<p>Pulsa <b>LETRA</b> (arriba a la izquierda del visualizador) para buscar la letra de la canción. Elige la fuente entre <b>LRCLIB</b>, <b>Genius</b> y <b>NetEase</b>. Si hay versión sincronizada, cambia entre <b>PLANA</b> y <b>SINCRO</b> (resaltado al ritmo). Desde el modal puedes <b>compartir</b> (toda la letra o una selección) y guardar en <b>PDF</b>. Tocar el título entre las bobinas lo copia al portapapeles.</p>' +
+      '<h4>Editar etiquetas (ID3)</h4>' +
+      '<p>En el menú <b>⋮</b> de una pista local elige <b>Editar etiquetas</b> para cambiar <b>título, artista, álbum, nº de pista</b> y <b>carátula</b>. Puedes <b>guardar/descargar</b> la carátula actual (botón sobre la imagen) antes de sustituirla, y al <b>quitarla</b> se pide confirmación. Necesita permiso de <b>escritura</b> en la carpeta: las añadidas recientemente ya lo tienen; las antiguas hay que <b>re-vincularlas</b>.</p>' +
+      '<h4>Letras y karaoke</h4>' +
+      '<p>Pulsa <b>LETRA</b> (arriba a la izquierda del visualizador) para buscar la letra. Elige la fuente entre <b>LRCLIB</b>, <b>Genius</b> y <b>NetEase</b> y, si hay versión sincronizada, cambia entre <b>PLANA</b> y <b>SINCRO</b>. La barra inferior de iconos es: <b>reproducir/pausa</b>, <b>quitar voz</b> (atenúa la voz centrada), <b>modo karaoke</b> (icono de maximizar), <b>compartir</b> y <b>PDF</b>. El <b>modo karaoke</b> abre la letra sincronizada a pantalla completa resaltando la frase/palabra que suena; se cierra con la <b>X</b> o con el botón <b>Atrás</b>. Mientras no cambies de canción, al reabrir LETRA se muestra la que ya tenías elegida sin volver a buscar. Tocar el título entre las bobinas lo copia al portapapeles.</p>' +
       '<h4>Online (YouTube)</h4>' +
-      '<p>En la pestaña <b>Online</b> puedes buscar música en YouTube y reproducir <b>solo el audio</b>, añadirla a tus listas o descargarla. El buscador es inteligente: si pegas un <b>enlace de YouTube</b> (youtu.be, youtube.com, Shorts…) abre directamente ese vídeo como resultado. Las descargas guardan también la <b>carátula</b> (miniatura del vídeo).</p>' +
+      '<p>En la pestaña <b>Online</b> buscas música en YouTube y la reproduces <b>solo audio</b>, la añades a listas o la descargas. Si pegas un <b>enlace de vídeo</b> abre ese resultado directamente; si pegas el enlace de una <b>lista de reproducción</b> carga todos sus vídeos en los resultados. Con la barra inferior puedes <b>añadir todo</b> a una lista o <b>descargar todo</b> (en lote), y con la <b>selección múltiple</b> (pulsación larga o botón Seleccionar) reproducir, añadir o descargar solo los marcados. Las descargas guardan también la <b>carátula</b> (miniatura del vídeo).</p>' +
       '<h4>Supresión de voz (karaoke)</h4>' +
       '<p>En el modo reproductor aparece un botón de <b>micrófono</b> que atenúa la voz centrada de la canción. Un <b>toque</b> la activa/desactiva; <b>mantén pulsado</b> para abrir los ajustes: <b>intensidad</b>, rango de <b>frecuencias</b> (grave/agudo de la voz) y presets rápidos (suave/medio/fuerte). Es aproximado: funciona mejor en pistas en estéreo.</p>' +
       '<h4>Exportar</h4>' +
@@ -209,7 +213,9 @@
       '<h4>Queue, Files and Playlists</h4>' +
       '<p>That view has three tabs: <b>Queue</b> (current list), <b>Files</b> (folder browser) and <b>Playlists</b> (create and edit your lists). Each track\'s <b>⋮</b> button lets you play now, play next, add to end or add to a playlist. The app <b>remembers</b> the last tab, folder or playlist you had open.</p>' +
       '<h4>Add all and multi-select</h4>' +
-      '<p>Inside a folder, the <b>add all</b> button drops every track into a playlist at once. The <b>select</b> (✓) button turns on multi-select in Files and inside a playlist: tick several tracks and use the bottom bar to play <b>next</b>, <b>at the end</b>, <b>add to playlist</b> or <b>remove</b> (in playlists).</p>' +
+      '<p>Inside a folder, the <b>add all</b> button drops every track into a playlist at once. Multi-select turns on with the <b>select</b> (✓) button or by <b>long-pressing</b> a track (in Files, inside a playlist and in Online). Tick several tracks and use the bottom bar to play <b>next</b>, <b>at the end</b>, <b>add to playlist</b>, <b>play</b>/<b>download</b> (in Online) or <b>remove</b> (in playlists). Switching tabs or leaving turns selection off.</p>' +
+      '<h4>Track count and duration</h4>' +
+      '<p>In <b>Files</b>, each folder shows its <b>track count</b> and <b>total duration</b>; <b>Playlists</b> show the same. The value is cached and the <b>duration is only recomputed when the number of items changes</b>, to avoid wasting resources.</p>' +
       '<h4>Folders and permissions</h4>' +
       '<p>If a folder ends up <b>without permission</b> after importing settings, it shows up flagged in Files: tap it to relink it without losing your playlists.</p>' +
       '<h4>LoFi effects</h4>' +
@@ -220,10 +226,12 @@
       '<p>Tap the eye to pick a visualizer and turn on the blurred <b>cover backdrop</b>.</p>' +
       '<h4>Full-screen artwork</h4>' +
       '<p>The <b>image</b> icon (bottom-left of the visualizer) opens the cover full-screen —the file\'s (ID3) or the YouTube thumbnail— with options to <b>save</b> to the device and <b>share</b>.</p>' +
-      '<h4>Lyrics</h4>' +
-      '<p>Tap <b>LYRIC</b> (top-left of the visualizer) to search a song\'s lyrics. Pick the source between <b>LRCLIB</b>, <b>Genius</b> and <b>NetEase</b>. When a synced version exists, switch between <b>PLAIN</b> and <b>SYNCED</b> (highlighted to the beat). From the modal you can <b>share</b> (the whole lyrics or a selection) and save a <b>PDF</b>. Tapping the title between the reels copies it to the clipboard.</p>' +
+      '<h4>Edit tags (ID3)</h4>' +
+      '<p>From a local track\'s <b>⋮</b> menu pick <b>Edit tags</b> to change <b>title, artist, album, track number</b> and <b>cover</b>. You can <b>save/download</b> the current cover (button over the image) before replacing it, and <b>removing</b> it asks for confirmation. It needs <b>write</b> permission on the folder: recently added ones already have it; older ones must be <b>relinked</b>.</p>' +
+      '<h4>Lyrics and karaoke</h4>' +
+      '<p>Tap <b>LYRIC</b> (top-left of the visualizer) to search lyrics. Pick the source between <b>LRCLIB</b>, <b>Genius</b> and <b>NetEase</b> and, when a synced version exists, switch between <b>PLAIN</b> and <b>SYNCED</b>. The bottom icon bar is: <b>play/pause</b>, <b>remove vocals</b> (attenuates the centered voice), <b>karaoke mode</b> (maximize icon), <b>share</b> and <b>PDF</b>. <b>Karaoke mode</b> opens the synced lyrics full-screen, highlighting the line/word being sung; close it with the <b>X</b> or the <b>Back</b> button. As long as the song does not change, reopening LYRIC shows the one you already picked without searching again. Tapping the title between the reels copies it to the clipboard.</p>' +
       '<h4>Online (YouTube)</h4>' +
-      '<p>In the <b>Online</b> tab you can search YouTube and play <b>audio only</b>, add tracks to your lists or download them. The search box is smart: paste a <b>YouTube link</b> (youtu.be, youtube.com, Shorts…) and it opens that video directly as a result. Downloads also embed the <b>cover art</b> (video thumbnail).</p>' +
+      '<p>In the <b>Online</b> tab you search YouTube and play <b>audio only</b>, add tracks to playlists or download them. Paste a <b>video link</b> and it opens that result directly; paste a <b>playlist link</b> and it loads all its videos into the results. The bottom bar lets you <b>add all</b> to a playlist or <b>download all</b> (batch), and with <b>multi-select</b> (long-press or the Select button) you can play, add or download only the ticked ones. Downloads also embed the <b>cover art</b> (video thumbnail).</p>' +
       '<h4>Vocal removal (karaoke)</h4>' +
       '<p>In player-only mode a <b>microphone</b> button appears that attenuates the song\'s centered vocal. A <b>tap</b> toggles it; <b>press and hold</b> to open the settings: <b>intensity</b>, vocal <b>frequency</b> range (low/high) and quick presets (soft/medium/strong). It\'s approximate and works best on stereo tracks.</p>' +
       '<h4>Export</h4>' +
