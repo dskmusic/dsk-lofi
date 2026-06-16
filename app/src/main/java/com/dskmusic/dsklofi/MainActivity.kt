@@ -133,6 +133,7 @@ class MainActivity : Activity() {
         webView.loadUrl("file:///android_asset/index.html")
         readIncomingProject(intent) // por si se abrió tocando un .dsk
         hasIncomingAudio = readIncomingAudio(intent)   // por si se abrió/compartió audio
+        readIncomingYouTube(intent)   // por si se compartió un enlace de YouTube
     }
 
     override fun onNewIntent(newIntent: android.content.Intent?) {
@@ -145,6 +146,40 @@ class MainActivity : Activity() {
         }
         // audio compartido/abierto con la app ya en marcha
         if (readIncomingAudio(newIntent)) deliverIncomingAudio()
+        // enlace/texto de YouTube compartido
+        if (readIncomingYouTube(newIntent)) deliverIncomingYouTube()
+    }
+
+    // URL de YouTube recibida por intent (SEND text/plain), pendiente de entregar.
+    private var pendingYouTubeUrl: String? = null
+
+    // Detecta si el texto compartido contiene un enlace de YouTube y lo guarda.
+    private fun readIncomingYouTube(i: android.content.Intent?): Boolean {
+        if (i == null) return false
+        if (i.action != android.content.Intent.ACTION_SEND) return false
+        val type = i.type ?: ""
+        if (!type.startsWith("text")) return false
+        val text = i.getStringExtra(android.content.Intent.EXTRA_TEXT)?.trim() ?: return false
+        // ¿contiene un enlace de YouTube? (la validación fina la hace el JS)
+        val yt = Regex("(?:youtu\\.be|youtube\\.com|youtube-nocookie\\.com|music\\.youtube\\.[a-z.]+)", RegexOption.IGNORE_CASE)
+        if (!yt.containsMatchIn(text)) return false
+        // extraer la primera URL del texto (a veces comparten "Mira esto: https://…")
+        val urlMatch = Regex("https?://\\S+").find(text)
+        pendingYouTubeUrl = urlMatch?.value ?: text
+        return true
+    }
+
+    // Entrega el enlace de YouTube al WebView: abre la pestaña Online y lo busca.
+    private fun deliverIncomingYouTube() {
+        val url = pendingYouTubeUrl ?: return
+        if (!::webView.isInitialized) return
+        pendingYouTubeUrl = null
+        webView.post {
+            webView.evaluateJavascript(
+                "window.DSKOpenYouTubeUrl && window.DSKOpenYouTubeUrl(" +
+                        org.json.JSONObject.quote(url) + ");", null
+            )
+        }
     }
 
     // URIs de audio recibidos por intent (VIEW / SEND / SEND_MULTIPLE), pendientes
@@ -457,6 +492,8 @@ class MainActivity : Activity() {
                 injectFileInputFix()
                 // entregar audio entrante (abrir/compartir) una vez la web está lista
                 view?.postDelayed({ deliverIncomingAudio() }, 350)
+                // entregar enlace de YouTube compartido
+                view?.postDelayed({ deliverIncomingYouTube() }, 400)
                 // si no hubo audio entrante, restaurar la última cola
                 view?.postDelayed({ tryRestoreQueue() }, 500)
             }

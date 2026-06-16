@@ -79,6 +79,13 @@
                 <data android:mimeType="audio/*" />
             </intent-filter>
 
+            <!-- Compartir texto/enlace a la app (p.ej. un enlace de YouTube) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
             <intent-filter android:autoVerify="false">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

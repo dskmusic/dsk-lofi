@@ -169,6 +169,18 @@
     }
   }
 
+  // Abre la biblioteca en la pestaña Online y busca el enlace de YouTube recibido
+  // (compartido a la app). Lo invoca el bridge nativo vía window.DSKOpenYouTubeUrl.
+  window.DSKOpenYouTubeUrl = function (url) {
+    if (!url) return;
+    try { DSKQueue.open(); } catch (e) {}
+    setTab("online");
+    // pequeño margen para que el panel online esté visible antes de buscar
+    setTimeout(() => {
+      if (window.DSKYoutubeUI && DSKYoutubeUI.openQuery) DSKYoutubeUI.openQuery(url);
+    }, 120);
+  };
+
   /* ============================ MENÚ ⋮ ============================ */
   // ctx: { kind:'queue'|'explorer'|'list', index?, item?, listId? }
   let menuCtx = null;

@@ -340,6 +340,16 @@
     setEmpty();
   }
 
+  // API pública: rellena el buscador con una URL/consulta y la ejecuta.
+  // La usa el bridge nativo cuando se comparte un enlace de YouTube a la app.
+  window.DSKYoutubeUI = {
+    openQuery: function (q) {
+      const inp = $("#ytSearch");
+      if (inp) inp.value = q || "";
+      run(q || "");
+    }
+  };
+
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })();
