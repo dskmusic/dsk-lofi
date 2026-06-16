@@ -53,7 +53,7 @@ Built by [DSK Music](https://dskmusic.com) — free tools for musicians since 20
 
 - Vanilla JS + Web Audio API (no frameworks, fast load)
 - Kotlin/Android WebView wrapper
-- NewPipeExtractor for on-device YouTube access
+- NewPipeExtractor for on-device online access
 - lamejs for MP3 encoding
 
 ---
