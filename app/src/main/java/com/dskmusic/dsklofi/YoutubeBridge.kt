@@ -123,6 +123,56 @@ class YoutubeBridge(private val ctx: Context) {
         }
     }
 
+    /** Carga una lista de reproducción completa → mismos campos que search(). */
+    @JavascriptInterface
+    fun resolvePlaylist(urlOrId: String, reqId: String) {
+        pool.execute {
+            try {
+                val url = normalizePlaylistUrl(urlOrId)
+                val handler = yt.playlistLHFactory.fromUrl(url)
+                val extractor = yt.getPlaylistExtractor(handler)
+                extractor.fetchPage()
+
+                val out = JSONArray()
+                val seen = HashSet<String>()
+                val target = 200
+                var page: org.schabi.newpipe.extractor.ListExtractor.InfoItemsPage<StreamInfoItem>? = extractor.initialPage
+                var guard = 0
+                while (out.length() < target && guard < 12) {
+                    val cur = page ?: break
+                    for (item in cur.items) {
+                        if (out.length() >= target) break
+                        val s = item as? StreamInfoItem ?: continue
+                        val vurl = s.url ?: continue
+                        val vid = try { yt.streamLHFactory.getId(vurl) } catch (e: Exception) { "" }
+                        if (vid.isNullOrBlank() || !seen.add(vid)) continue
+                        out.put(JSONObject().apply {
+                            put("videoId", vid)
+                            put("title", s.name ?: "")
+                            put("uploader", s.uploaderName ?: "")
+                            put("duration", s.duration)
+                            put("thumb", bestThumb(s))
+                        })
+                    }
+                    if (out.length() >= target) break
+                    val np = cur.nextPage ?: break
+                    page = try { extractor.getPage(np) } catch (e: Exception) { null }
+                    guard++
+                }
+                if (out.length() == 0) callback("__error", reqId, "notfound")
+                else result(reqId, out)
+            } catch (e: Throwable) {
+                callback("__error", reqId, shortErr(e))
+            }
+        }
+    }
+
+    private fun normalizePlaylistUrl(s: String): String {
+        val v = s.trim()
+        if (v.startsWith("http")) return v
+        return "https://www.youtube.com/playlist?list=$v"
+    }
+
     /** Resuelve la URL de SOLO-AUDIO de un vídeo (caduca: re-llamar al reproducir). */
     @JavascriptInterface
     fun resolveAudio(videoId: String, reqId: String) {

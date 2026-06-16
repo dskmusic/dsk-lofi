@@ -644,6 +644,16 @@
       <button class="lib-add yt-go" id="ytGo" type="button" data-i18n="on_search"></button>
     </div>
     <div class="lib-list" id="ytItems"></div>
+    <div class="sel-bar yt-foot" id="ytFoot" hidden="hidden">
+      <span class="sel-bar__count" id="ytFootCount" hidden="hidden"></span>
+      <button class="sel-bar__btn sel-bar__btn--ghost" id="ytSelectToggle" type="button" data-i18n="on_select"></button>
+      <button class="sel-bar__btn" id="ytAddAll" type="button" data-i18n="on_add_all"></button>
+      <button class="sel-bar__btn" id="ytDlAll" type="button" data-i18n="on_dl_all"></button>
+      <button class="sel-bar__btn" id="ytSelPlay" type="button" data-i18n="m_play" hidden="hidden"></button>
+      <button class="sel-bar__btn" id="ytSelAdd" type="button" data-i18n="m_add_list" hidden="hidden"></button>
+      <button class="sel-bar__btn" id="ytSelDl" type="button" data-i18n="on_download" hidden="hidden"></button>
+      <button class="sel-bar__btn sel-bar__btn--ghost" id="ytSelCancel" type="button" data-i18n="cancel" hidden="hidden"></button>
+    </div>
   </section>
 
   <!-- LISTAS -->
@@ -743,10 +753,26 @@
       <button class="seg__item" type="button" data-val="netease" data-i18n="lyr_src_netease">NetEase</button>
     </div>
     <div class="lyr-body" id="lyrBody"></div>
-    <div class="lyr-actions" id="lyrActions" hidden="hidden">
-      <button class="btn btn--ghost lyr-act" id="lyrShare" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"></line><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"></line></svg><span data-i18n="lyr_share">SHARE</span></button>
-      <button class="btn btn--ghost lyr-act" id="lyrPdf" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M9 13h6M9 17h4"></path></svg><span data-i18n="lyr_pdf">PDF</span></button>
+    <div class="lyr-actions lyr-iconbar" id="lyrActions" hidden="hidden">
+      <button class="lyr-ibtn" id="lyrPlay" type="button" data-i18n-aria="play" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polygon points="8 4.5 20 12 8 19.5"></polygon></svg></button>
+      <button class="lyr-ibtn" id="lyrVox" type="button" data-i18n-aria="lyr_karaoke" aria-label="Reduce vocals"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M5 11a7 7 0 0 0 14 0"></path><line x1="12" y1="18" x2="12" y2="22"></line><line x1="3" y1="3" x2="21" y2="21"></line></svg></button>
+      <button class="lyr-ibtn lyr-ibtn--kar" id="lyrKaraoke" type="button" data-i18n-aria="kar_open" aria-label="Karaoke mode"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M5 11a7 7 0 0 0 14 0"></path><line x1="12" y1="18" x2="12" y2="22"></line><line x1="8" y1="22" x2="16" y2="22"></line></svg></button>
+      <button class="lyr-ibtn" id="lyrShare" type="button" data-i18n-aria="lyr_share" aria-label="Share"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"></line><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"></line></svg></button>
+      <button class="lyr-ibtn" id="lyrPdf" type="button" data-i18n-aria="lyr_pdf" aria-label="PDF"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M9 13h6M9 17h4"></path></svg></button>
     </div>
+  </div>
+</div>
+
+<!-- ===================== KARAOKE (PANTALLA COMPLETA) ===================== -->
+<div class="modal modal--karaoke" id="karaokeModal" aria-hidden="true" role="dialog">
+  <div class="kar-top">
+    <span class="kar-head" id="kHead"></span>
+    <button class="icon-btn kar-x" id="kClose" type="button" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+  </div>
+  <div class="kar-stage" id="kStage"></div>
+  <div class="kar-ctl">
+    <button class="kar-cbtn" id="kVox" type="button" data-i18n-aria="lyr_karaoke" aria-label="Reduce vocals"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M5 11a7 7 0 0 0 14 0"></path><line x1="12" y1="18" x2="12" y2="22"></line><line x1="3" y1="3" x2="21" y2="21"></line></svg></button>
+    <button class="kar-cbtn kar-cbtn--play" id="kPlay" type="button" data-i18n-aria="play" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polygon points="8 4.5 20 12 8 19.5"></polygon></svg></button>
   </div>
 </div>
 
@@ -805,6 +831,37 @@
   <div class="aw-actions">
     <button class="btn btn--ghost" id="awSave" type="button" data-i18n="aw_save"></button>
     <button class="btn btn--ghost" id="awShare" type="button" data-i18n="aw_share"></button>
+  </div>
+</div>
+
+<!-- ===================== EDITOR DE ETIQUETAS ID3 ===================== -->
+<div class="modal" id="tagEditModal" aria-hidden="true" role="dialog">
+  <div class="modal__scrim" data-close="tagEditModal"></div>
+  <div class="modal__card tag-card">
+    <div class="modal__head">
+      <h2 class="modal__title" data-i18n="tag_title">EDIT TAGS</h2>
+      <button class="icon-btn modal__x" type="button" data-close="tagEditModal"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+    </div>
+    <div class="tag-body">
+      <div class="tag-cover">
+        <img class="tag-cover__img" id="tagCoverImg" alt="" hidden>
+        <div class="tag-cover__none" id="tagCoverNone" data-i18n="tag_no_cover">No cover</div>
+        <button class="tag-cover__save" id="tagCoverSave" type="button" data-i18n-aria="tag_cover_save" aria-label="Save cover" hidden><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></button>
+      </div>
+      <div class="tag-cover__btns">
+        <button class="btn btn--ghost" id="tagCoverPick" type="button" data-i18n="tag_cover_change">Change cover</button>
+        <button class="btn btn--ghost" id="tagCoverClear" type="button" data-i18n="tag_cover_remove">Remove</button>
+      </div>
+      <input type="file" id="tagCoverInput" accept="image/*" hidden>
+      <label class="tag-field"><span data-i18n="tag_f_title">Title</span><input class="field" id="tagFTitle" type="text" autocomplete="off"></label>
+      <label class="tag-field"><span data-i18n="tag_f_artist">Artist</span><input class="field" id="tagFArtist" type="text" autocomplete="off"></label>
+      <label class="tag-field"><span data-i18n="tag_f_album">Album</span><input class="field" id="tagFAlbum" type="text" autocomplete="off"></label>
+      <label class="tag-field"><span data-i18n="tag_f_track">Track</span><input class="field" id="tagFTrack" type="text" inputmode="numeric" autocomplete="off"></label>
+    </div>
+    <div class="modal__actions tag-actions">
+      <button class="btn btn--ghost btn--block" type="button" data-close="tagEditModal" data-i18n="cancel"></button>
+      <button class="btn btn--success btn--block" id="tagSave" type="button" data-i18n="tag_save">SAVE</button>
+    </div>
   </div>
 </div>
 

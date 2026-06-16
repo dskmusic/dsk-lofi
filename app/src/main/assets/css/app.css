@@ -502,6 +502,21 @@
     }
     .aw-actions .btn { flex: 1; }
 
+    /* ---- editor de etiquetas ID3 ---- */
+    .tag-card { width: min(94vw, 460px); }
+    .tag-body { margin-top: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); max-height: 70vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .tag-cover { width: 140px; height: 140px; align-self: center; position: relative; border-radius: var(--radius-md); overflow: hidden; background: var(--color-surface-raised); box-shadow: var(--shadow-inset); display: flex; align-items: center; justify-content: center; }
+    .tag-cover__save { position: absolute; top: 6px; right: 6px; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-bg) 72%, transparent); color: var(--color-text); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); box-shadow: var(--btn-edge); transition: transform var(--dur-fast); }
+    .tag-cover__save .ic { width: 18px; height: 18px; }
+    .tag-cover__save:active { transform: scale(0.9); }
+    .tag-cover__img { width: 100%; height: 100%; object-fit: cover; }
+    .tag-cover__none { color: var(--color-text-faint); font-size: var(--fs-micro); letter-spacing: var(--ls-label); text-transform: uppercase; }
+    .tag-cover__btns { display: flex; gap: var(--space-2); justify-content: center; }
+    .tag-cover__btns .btn { flex: 1; max-width: 160px; }
+    .tag-field { display: flex; flex-direction: column; gap: 4px; }
+    .tag-field > span { font-family: var(--font-display); font-size: var(--fs-micro); letter-spacing: var(--ls-label); text-transform: uppercase; color: var(--color-text-faint); }
+    .tag-actions { display: flex; gap: var(--space-2); }
+
     /* ============================ SHAZAM MODAL ============================ */
     .sh-card { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding-top: var(--space-6); min-height: 260px; justify-content: center; position: relative; }
     .sh-close { position: absolute; top: 8px; right: 8px; }
@@ -554,11 +569,45 @@
     .lyr-text--synced { white-space: normal; }
     .lyr-line { margin: 0 0 3px; font-size: 16px; transition: color var(--dur-fast), opacity var(--dur-fast); opacity: 0.5; -webkit-user-select: text; user-select: text; }
     .lyr-line.is-cur { color: var(--acc); opacity: 1; text-shadow: var(--glow-acc); font-weight: var(--fw-semi); }
-    .lyr-actions { display: flex; gap: var(--space-2); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--color-border); }
     .lyr-actions[hidden] { display: none; }
-    .lyr-act { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-    .lyr-act .ic { width: 16px; height: 16px; }
+    /* barra inferior compacta de iconos (play · quitar voz · karaoke · compartir · pdf) */
+    .lyr-iconbar { display: flex; gap: var(--space-2); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--color-border); justify-content: space-between; }
+    .lyr-ibtn { flex: 1; height: 40px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); background: var(--color-surface-raised); color: var(--color-text); box-shadow: var(--btn-edge), var(--shadow-inset); transition: transform var(--dur-fast), background var(--dur-fast), color var(--dur-fast), opacity var(--dur-fast); }
+    .lyr-ibtn .ic { width: 19px; height: 19px; }
+    .lyr-ibtn:active { transform: scale(0.92); }
+    .lyr-ibtn.is-on { background: var(--acc); color: var(--acc-ink); box-shadow: var(--glow-acc); }
+    .lyr-ibtn.is-disabled, .lyr-ibtn:disabled { opacity: 0.35; pointer-events: none; }
+    .lyr-ibtn--kar.is-on { background: var(--acc); color: var(--acc-ink); }
     #lyricsModal { z-index: 330; }
+
+    /* ===================== MODO KARAOKE (PANTALLA COMPLETA) ===================== */
+    .modal.modal--karaoke { position: fixed; inset: 0; z-index: 9000; flex-direction: column; background: radial-gradient(120% 120% at 50% 0%, color-mix(in srgb, var(--acc) 12%, var(--color-bg)) 0%, var(--color-bg) 60%); }
+    .modal--karaoke.modal--open { display: flex; }
+    .kar-top { display: flex; align-items: center; gap: var(--space-2); padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4) var(--space-3); flex: none; }
+    .kar-head { flex: 1; min-width: 0; font-weight: var(--fw-semi); font-size: var(--fs-small); color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .kar-x { flex: none; color: var(--color-text); }
+    .kar-stage { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: clamp(10px, 3.2vh, 26px); padding: 38vh var(--space-5); text-align: center; scrollbar-width: none; }
+    .kar-stage::-webkit-scrollbar { display: none; }
+    .kar-line { font-size: clamp(20px, 5.6vw, 30px); font-weight: var(--fw-semi); line-height: 1.3; color: var(--color-text-faint); opacity: 0.45; transition: opacity var(--dur-base), color var(--dur-base), transform var(--dur-base); transform: scale(0.96); text-wrap: balance; }
+    .kar-line.is-past { opacity: 0.3; }
+    .kar-line.is-cur { opacity: 1; color: var(--color-text); transform: scale(1); }
+    /* resaltado palabra a palabra (LRC mejorado) */
+    .kar-w { transition: color var(--dur-fast), text-shadow var(--dur-fast); }
+    .kar-line.is-cur .kar-w.is-sung { color: var(--acc); }
+    .kar-line.is-cur .kar-w.is-cur { text-shadow: var(--glow-acc); }
+    /* barrido proporcional cuando no hay tiempos de palabra */
+    .kar-line.is-cur .kar-fulltext { background: linear-gradient(90deg, var(--acc) 0%, var(--acc) var(--kfill, 0%), currentColor var(--kfill, 0%), currentColor 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .kar-ctl { flex: none; display: flex; align-items: center; justify-content: center; gap: var(--space-5); padding: var(--space-4) var(--space-4) calc(var(--space-5) + env(safe-area-inset-bottom)); }
+    .kar-cbtn { width: 52px; height: 52px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--color-surface-raised); color: var(--color-text); box-shadow: var(--btn-edge), var(--shadow-inset); transition: transform var(--dur-fast), background var(--dur-fast), color var(--dur-fast); }
+    .kar-cbtn .ic { width: 22px; height: 22px; }
+    .kar-cbtn:active { transform: scale(0.9); }
+    .kar-cbtn.is-on { background: var(--acc); color: var(--acc-ink); box-shadow: var(--glow-acc); }
+    .kar-cbtn--play { width: 64px; height: 64px; background: var(--acc); color: var(--acc-ink); box-shadow: var(--glow-acc); }
+    .kar-cbtn--play .ic { width: 26px; height: 26px; }
+    /* en la app nativa el WebView ya está desplazado bajo las barras: anulamos
+       los insets para que no se dupliquen (margen arriba / corte abajo) */
+    .is-webview .kar-top { padding-top: var(--space-3); }
+    .is-webview .kar-ctl { padding-bottom: var(--space-5); }
 
     /* ============================ ONLINE (YouTube) ============================ */
     .yt-bar { gap: var(--space-2); }
@@ -578,6 +627,12 @@
     .yt-row__bar.is-active { opacity: 1; }
     .yt-row__barfill { height: 100%; width: 0%; background: var(--acc); box-shadow: var(--glow-acc); transition: width 0.15s linear; }
     .yt-state { padding: var(--space-8) var(--space-5); text-align: center; color: var(--color-text-faint); font-size: var(--fs-small); text-wrap: pretty; }
+    /* selección múltiple en resultados online */
+    .yt-row__chk { flex: none; width: 22px; height: 22px; border-radius: var(--radius-sm); border: 2px solid var(--color-border); display: inline-flex; align-items: center; justify-content: center; color: transparent; }
+    .yt-row__chk .ic { width: 14px; height: 14px; stroke-width: 3; }
+    .yt-row--checked { background: var(--acc-faint); }
+    .yt-row--checked .yt-row__chk { background: var(--acc); border-color: var(--acc); color: var(--color-bg); }
+    .yt-foot { flex: none; }
     .yt-ver { text-align: center; color: var(--color-text-faint); font-size: var(--fs-tiny, 11px); line-height: 1.5; padding: 0 var(--space-5) var(--space-6); opacity: 0.8; }
     .yt-ver__new { color: var(--acc); font-weight: 600; }
 

@@ -8,33 +8,34 @@
 
    TRANSPORTE
      - App Android: window.DSKLyrics (LyricsBridge.kt) para AMBAS fuentes.
-       Kotlin responde por window.DSKLyrics.__result / __error.
-     - Navegador/PWA: LRCLIB por fetch directo (CORS abierto). Genius no
-       disponible sin la app (lo indica el propio modal).
+     - Navegador/PWA: LRCLIB por fetch directo (CORS abierto).
 
-   API pública:  window.Lyrics.open(title, artist) · .close() · .isOpen()
+   NUEVO (rediseño):
+     - Barra inferior compacta de iconos: play/pausa · quitar voz · modo
+       karaoke · compartir · PDF (sin texto).
+     - Modo Karaoke a pantalla completa (#karaokeModal) con resaltado de la
+       frase/palabra en reproducción. Cierra con la X o con el botón Atrás.
+
+   API pública:  window.Lyrics.open(title, artist) · .close() · .back() · .isOpen()
    ========================================================================== */
 (function () {
   "use strict";
 
   const $ = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
   const t = (k) => (window.I18n ? I18n.t(k) : k);
   const esc = (s) => String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-  const ICON_PLAY    = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polygon points="8 4.5 20 12 8 19.5"></polygon></svg>';
-  const ICON_PAUSE   = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14"></rect><rect x="14" y="5" width="4" height="14"></rect></svg>';
-  const ICON_KARAOKE = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M5 11a7 7 0 0 0 14 0"></path><line x1="12" y1="18" x2="12" y2="22"></line><line x1="3" y1="3" x2="21" y2="21"></line></svg>';
+  const ICON_PLAY  = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polygon points="8 4.5 20 12 8 19.5"></polygon></svg>';
+  const ICON_PAUSE = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14"></rect><rect x="14" y="5" width="4" height="14"></rect></svg>';
   let ctlTimer = 0;
 
   const native = () =>
     typeof window.DSKLyrics !== "undefined" &&
     typeof window.DSKLyrics.search === "function";
 
-  // Limpia caracteres que rompen el buscador de LRCLIB (y mejora Genius):
-  // quita extensión, paréntesis/corchetes (Official Video, Remaster…), feat.,
-  // y separadores raros ( - / \ | _ · – — etc ) → espacios.
   function cleanQuery(q) {
     const c = String(q || "")
       .replace(/\.(mp3|wav|ogg|opus|flac|m4a|aac|webm)$/i, "")
@@ -55,6 +56,10 @@
   let curMode = "plain";
   let pendingSelection = "";
   let syncRAF = 0;
+  let loadedKey = "";   // clave (canción) de la búsqueda actualmente cargada
+
+  // clave de canción para decidir si reabrir reusa lo ya cargado o re-busca
+  function keyOf(q) { return String(q || "").trim().toLowerCase(); }
 
   try {
     const s = localStorage.getItem("dsklofi.lyrsrc");
@@ -68,7 +73,6 @@
 
   function installNativeCallbacks() {
     if (callbacksReady || !native()) return;
-    // Se añaden propiedades JS al objeto inyectado por Android.
     window.DSKLyrics.__result = function (reqId, json) {
       const p = pending[reqId]; if (!p) return; delete pending[reqId];
       let arr = []; try { arr = JSON.parse(json) || []; } catch (e) { arr = []; }
@@ -97,7 +101,7 @@
   }
 
   async function searchBrowser(query, src) {
-    if (src !== "lrclib") throw "remote_browser";   // Genius/NetEase: solo en la app
+    if (src !== "lrclib") throw "remote_browser";
     const r = await fetch(
       "https://lrclib.net/api/search?q=" + encodeURIComponent(query),
       { headers: { Accept: "application/json" } }
@@ -123,25 +127,39 @@
   }
 
   /* ----------------------------- .lrc -------------------------------- */
+  // Devuelve [{t, text, words?:[{t,text}]}]. Soporta LRC mejorado (A2): tags de
+  // palabra <mm:ss.xx> dentro de la línea para resaltado palabra a palabra.
   function parseLrc(text) {
     const out = [];
     String(text || "").split(/\r?\n/).forEach((line) => {
       const tags = line.match(/\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]/g);
       if (!tags) return;
-      const body = line.replace(/\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]/g, "").trim();
+      let body = line.replace(/\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]/g, "");
+      // palabras con tiempo: <mm:ss.xx>palabra
+      let words = null;
+      if (/<\d{1,2}:\d{2}(?:[.:]\d{1,3})?>/.test(body)) {
+        words = [];
+        const re = /<(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?>([^<]*)/g;
+        let mw;
+        while ((mw = re.exec(body)) !== null) {
+          const sec = (+mw[1]) * 60 + (+mw[2]) + (mw[3] ? +("0." + mw[3]) : 0);
+          const txt = mw[4];
+          if (txt !== "") words.push({ t: sec, text: txt });
+        }
+        body = body.replace(/<\d{1,2}:\d{2}(?:[.:]\d{1,3})?>/g, "");
+      }
+      body = body.trim();
       tags.forEach((tag) => {
         const m = tag.match(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/);
         if (!m) return;
         const sec = (+m[1]) * 60 + (+m[2]) + (m[3] ? +("0." + m[3]) : 0);
-        out.push({ t: sec, text: body });
+        out.push({ t: sec, text: body, words: words });
       });
     });
     out.sort((a, b) => a.t - b.t);
     return out;
   }
 
-  // Texto plano: usa la letra plana o, si solo hay sincronizada, le quita los
-  // tiempos. Lo usan Compartir y PDF.
   function stripLrc(s) { return parseLrc(s).map((l) => l.text).join("\n").trim(); }
   function plainFromResult(r) {
     if (!r) return "";
@@ -165,8 +183,7 @@
   }
   function showNotFound() {
     resetView();
-    setBody('<div class="lyr-state lyr-state--empty">' +
-      esc(t("lyr_notfound")) + "</div>");
+    setBody('<div class="lyr-state lyr-state--empty">' + esc(t("lyr_notfound")) + "</div>");
   }
   function showError(code) {
     resetView();
@@ -208,8 +225,8 @@
     paintLyric();
   }
 
-  // Repinta la letra actual en el modo actual. Cambiar de modo NUNCA toca la
-  // reproducción: solo redibuja y (re)arranca o detiene el resaltado.
+  // Repinta la letra actual. La barra de control vive FUERA del cuerpo
+  // (#lyrActions), así que aquí solo dibujamos el cambio de modo + el texto.
   function paintLyric() {
     const r = curResult;
     if (!r) return;
@@ -225,19 +242,16 @@
     }
     h += '<div class="lyr-songhead">' + esc(songHead(r)) + "</div>";
 
-    // fila de control: modo (si hay ambos) + play/pausa + karaoke
-    h += '<div class="lyr-ctl">';
+    // fila de control: solo el selector de modo (si hay ambos). Los botones de
+    // play / micrófono se eliminaron: ahora están en la barra inferior.
     if (hasSynced && hasPlain) {
-      h += '<div class="seg lyr-modeseg" id="lyrModeSeg">' +
+      h += '<div class="lyr-ctl">' +
+           '<div class="seg lyr-modeseg" id="lyrModeSeg">' +
            '<button class="seg__item' + (curMode === "plain" ? " seg__item--active" : "") +
            '" type="button" data-mode="plain">' + esc(t("lyr_plain")) + "</button>" +
            '<button class="seg__item' + (curMode === "synced" ? " seg__item--active" : "") +
-           '" type="button" data-mode="synced">' + esc(t("lyr_synced")) + "</button></div>";
+           '" type="button" data-mode="synced">' + esc(t("lyr_synced")) + "</button></div></div>";
     }
-    h += '<div class="lyr-ctl__btns">' +
-         '<button class="lyr-ctlbtn" id="lyrPlay" type="button" data-act="play" aria-label="' + esc(t("play")) + '"></button>' +
-         '<button class="lyr-ctlbtn" id="lyrKaraoke" type="button" data-act="karaoke" aria-label="' + esc(t("lyr_karaoke")) + '"></button>' +
-         "</div></div>";
 
     if (curMode === "synced" && hasSynced) {
       const lines = parseLrc(r.synced);
@@ -256,24 +270,38 @@
     startCtlTimer();
   }
 
-  // refresca iconos/estado de los botones play y karaoke
+  // ¿la letra actual tiene versión sincronizada (para habilitar Modo Karaoke)?
+  function hasSyncedNow() { return !!(curResult && curResult.synced); }
+
+  // refresca iconos/estado de la barra inferior (play, quitar voz, karaoke)
   function refreshCtl() {
+    const playing = !!(window.Engine && Engine.playing);
     const playBtn = $("#lyrPlay");
     if (playBtn) {
-      const playing = !!(window.Engine && Engine.playing);
       playBtn.innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
       playBtn.classList.toggle("is-on", playing);
     }
+    const voxBtn = $("#lyrVox");
+    if (voxBtn) voxBtn.classList.toggle("is-on", !!(window.Engine && Engine.karaokeOn));
     const kBtn = $("#lyrKaraoke");
     if (kBtn) {
-      kBtn.innerHTML = ICON_KARAOKE;
-      kBtn.classList.toggle("is-on", !!(window.Engine && Engine.karaokeOn));
+      const can = hasSyncedNow();
+      kBtn.disabled = !can;
+      kBtn.classList.toggle("is-disabled", !can);
+      kBtn.classList.toggle("is-on", karaokeOpen());
+    }
+    // refrescar también la barra del karaoke a pantalla completa, si está abierto
+    if (karaokeOpen()) {
+      const kp = $("#kPlay");
+      if (kp) { kp.innerHTML = playing ? ICON_PAUSE : ICON_PLAY; kp.classList.toggle("is-on", playing); }
+      const kv = $("#kVox");
+      if (kv) kv.classList.toggle("is-on", !!(window.Engine && Engine.karaokeOn));
     }
   }
   function startCtlTimer() { stopCtlTimer(); ctlTimer = setInterval(refreshCtl, 600); }
   function stopCtlTimer() { if (ctlTimer) { clearInterval(ctlTimer); ctlTimer = 0; } }
 
-  /* ----------------- resaltado en vivo de la letra sincronizada ------- */
+  /* ----------------- resaltado en vivo de la letra (modal normal) ------- */
   function startSync(lines) {
     stopSync();
     const cont = $("#lyrSynced");
@@ -291,19 +319,126 @@
       last = idx;
       const ps = cont.querySelectorAll(".lyr-line");
       ps.forEach((p, k) => p.classList.toggle("is-cur", k === idx));
-      if (idx >= 0 && ps[idx]) {
-        ps[idx].scrollIntoView({ block: "center", behavior: "smooth" });
-      }
+      if (idx >= 0 && ps[idx]) ps[idx].scrollIntoView({ block: "center", behavior: "smooth" });
     }
     tick();
   }
   function stopSync() { if (syncRAF) { cancelAnimationFrame(syncRAF); syncRAF = 0; } }
+
+  /* =======================================================================
+     MODO KARAOKE — pantalla completa
+     ===================================================================== */
+  let kRAF = 0;
+  let kLines = [];
+  let kLast = -2;
+
+  function karaokeOpen() {
+    const m = $("#karaokeModal");
+    return !!(m && m.classList.contains("modal--open"));
+  }
+
+  function openKaraoke() {
+    if (!hasSyncedNow()) { if (window.UI) UI.toast(t("kar_need_sync")); return; }
+    kLines = parseLrc(curResult.synced);
+    if (!kLines.length) { if (window.UI) UI.toast(t("kar_need_sync")); return; }
+    const head = $("#kHead");
+    if (head) head.textContent = songHead(curResult);
+    const stage = $("#kStage");
+    if (stage) {
+      let h = "";
+      kLines.forEach((ln, k) => {
+        h += '<div class="kar-line" data-k="' + k + '">' + renderKarLine(ln) + "</div>";
+      });
+      stage.innerHTML = h;
+    }
+    kLast = -2;
+    if (window.UI) UI.openModal("karaokeModal");
+    refreshCtl();
+    startKaraokeLoop();
+  }
+
+  // Una línea del karaoke: si tiene palabras con tiempo, las envuelve en <span>
+  // para resaltarlas una a una; si no, una sola frase (se resaltará entera y con
+  // un barrido proporcional al tiempo).
+  function renderKarLine(ln) {
+    if (!ln.text) return "&nbsp;";
+    if (ln.words && ln.words.length) {
+      return ln.words.map((w, i) =>
+        '<span class="kar-w" data-wt="' + w.t + '">' + esc(w.text) + "</span>").join("");
+    }
+    return '<span class="kar-fulltext">' + esc(ln.text) + "</span>";
+  }
+
+  function closeKaraoke() {
+    stopKaraokeLoop();
+    if (window.UI) UI.closeModal("karaokeModal");
+    refreshCtl();
+  }
+
+  function startKaraokeLoop() {
+    stopKaraokeLoop();
+    const stage = $("#kStage");
+    if (!stage || !kLines.length) return;
+    const lineEls = $$(".kar-line", stage);
+
+    function tick() {
+      kRAF = requestAnimationFrame(tick);
+      const pos = (window.Engine && typeof Engine.position === "function") ? Engine.position() : 0;
+
+      // línea actual
+      let idx = -1;
+      for (let i = 0; i < kLines.length; i++) {
+        if (kLines[i].t <= pos + 0.12) idx = i; else break;
+      }
+
+      if (idx !== kLast) {
+        kLast = idx;
+        lineEls.forEach((el, k) => {
+          el.classList.toggle("is-cur", k === idx);
+          el.classList.toggle("is-past", k < idx);
+        });
+        const cur = lineEls[idx];
+        if (cur) cur.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+
+      // resaltado dentro de la línea actual
+      const cur = lineEls[idx];
+      if (cur) {
+        const ln = kLines[idx];
+        const next = kLines[idx + 1];
+        if (ln && ln.words && ln.words.length) {
+          // palabra a palabra
+          const ws = cur.querySelectorAll(".kar-w");
+          let wOn = -1;
+          for (let j = 0; j < ln.words.length; j++) {
+            if (ln.words[j].t <= pos + 0.05) wOn = j; else break;
+          }
+          ws.forEach((wel, j) => {
+            wel.classList.toggle("is-sung", j <= wOn);
+            wel.classList.toggle("is-cur", j === wOn);
+          });
+        } else {
+          // barrido proporcional de la frase entera
+          const ft = cur.querySelector(".kar-fulltext");
+          if (ft) {
+            const start = ln.t;
+            const end = next ? next.t : start + 4;
+            const frac = Math.max(0, Math.min(1, (pos - start) / Math.max(0.1, end - start)));
+            ft.style.setProperty("--kfill", (frac * 100) + "%");
+          }
+        }
+      }
+    }
+    tick();
+  }
+  function stopKaraokeLoop() { if (kRAF) { cancelAnimationFrame(kRAF); kRAF = 0; } }
 
   /* ------------------------------ flujo ------------------------------ */
   async function run(query) {
     query = (query || "").trim();
     if (!query) return;
     curQuery = query;
+    loadedKey = keyOf(query);
     stopSync();
     showLoading();
     try {
@@ -318,15 +453,12 @@
   }
 
   /* --------------------- compartir / guardar PDF --------------------- */
-  // Texto seleccionado dentro del cuerpo del modal (solo si está dentro).
   function selectedLyricText() {
     try {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed || !sel.rangeCount) return "";
       const b = body();
-      if (b && (b.contains(sel.anchorNode) || b.contains(sel.focusNode))) {
-        return sel.toString().trim();
-      }
+      if (b && (b.contains(sel.anchorNode) || b.contains(sel.focusNode))) return sel.toString().trim();
     } catch (e) {}
     return "";
   }
@@ -349,20 +481,15 @@
     const artist = (r.artist || "").trim();
     const head = songHead(r);
     const foot = "— " + t("lyr_shared_from") + " DSK•LoFi\nhttps://apps.dskmusic.com";
-
-    // ¿hay una selección? → preguntar selección vs letra entera
     const sel = pendingSelection || selectedLyricText();
     pendingSelection = "";
     let useSel = false;
     if (sel && window.UI && UI.confirm) {
       useSel = await UI.confirm({
-        title: t("lyr_share"),
-        message: t("lyr_share_ask"),
-        confirmLabel: t("lyr_share_sel"),
-        cancelLabel: t("lyr_share_full")
+        title: t("lyr_share"), message: t("lyr_share_ask"),
+        confirmLabel: t("lyr_share_sel"), cancelLabel: t("lyr_share_full")
       });
     }
-
     let text;
     if (useSel) {
       const songLine = (artist ? artist + " — " : "") + title;
@@ -380,12 +507,9 @@
     const artist = (r.artist || "").trim();
     const lyrics = plainFromResult(r);
     try {
-      if (window.DSKBridge && DSKBridge.saveLyricsPdf) {
-        DSKBridge.saveLyricsPdf(artist, title, lyrics);
-        return;
-      }
+      if (window.DSKBridge && DSKBridge.saveLyricsPdf) { DSKBridge.saveLyricsPdf(artist, title, lyrics); return; }
     } catch (e) {}
-    printFallback(artist, title, lyrics);   // navegador: ventana imprimible
+    printFallback(artist, title, lyrics);
   }
 
   function printFallback(artist, title, lyrics) {
@@ -415,20 +539,30 @@
     installNativeCallbacks();
     const inp = $("#lyrSearch");
     const q = ((artist ? artist + " " : "") + (title || "")).trim();
+    // Misma canción y ya hay algo cargado → restaurar SIN volver a buscar:
+    // si había una letra elegida, se muestra esa; si no, la lista de resultados.
+    if (q && keyOf(q) === loadedKey && (curResult || results.length)) {
+      if (inp) inp.value = q;
+      if (window.UI) UI.openModal("lyricsModal");
+      if (curResult) { showActions(true); paintLyric(); }
+      else renderResults();
+      return;
+    }
     if (inp) inp.value = q;
     if (window.UI) UI.openModal("lyricsModal");
     if (q) run(q);
     else { resetView(); setBody('<div class="lyr-state lyr-state--empty">' + esc(t("lyr_empty")) + "</div>"); }
   }
   function close() {
-    stopSync();
-    stopCtlTimer();
+    stopSync(); stopKaraokeLoop(); stopCtlTimer();
     showActions(false);
-    if (window.UI) UI.closeModal("lyricsModal");
+    if (window.UI) { UI.closeModal("karaokeModal"); UI.closeModal("lyricsModal"); }
   }
-  // Back del dispositivo: si hay una letra abierta y hubo varios resultados,
-  // vuelve a la lista; si no, cierra el modal.
+  // Back del dispositivo. Nota: el karaoke a pantalla completa es un modal con
+  // mayor z-index, así que DSKHandleBack lo cierra primero por sí mismo. Aquí
+  // cubrimos el caso del modal de letras: volver a la lista o cerrar.
   function back() {
+    if (karaokeOpen()) { closeKaraoke(); return; }
     if (curResult && results.length > 1) { stopSync(); stopCtlTimer(); renderResults(); return; }
     close();
   }
@@ -444,13 +578,40 @@
       if (e.key === "Enter") { e.preventDefault(); inp.blur(); run(inp.value); }
     });
 
+    // barra inferior de iconos: play · quitar voz · modo karaoke · compartir · PDF
+    const playBtn = $("#lyrPlay");
+    if (playBtn) playBtn.addEventListener("click", () => {
+      try { if (window.DSKControls) DSKControls.toggle(); } catch (e) {}
+      setTimeout(refreshCtl, 80);
+    });
+    const voxBtn = $("#lyrVox");
+    if (voxBtn) voxBtn.addEventListener("click", () => {
+      try { if (window.Engine && Engine.setKaraoke) Engine.setKaraoke(!Engine.karaokeOn); } catch (e) {}
+      refreshCtl();
+    });
+    const kBtn = $("#lyrKaraoke");
+    if (kBtn) kBtn.addEventListener("click", () => { if (!kBtn.disabled) openKaraoke(); });
+
     const sh = $("#lyrShare"), pf = $("#lyrPdf");
     if (sh) {
-      // capturar la selección ANTES de que el tap en el botón la borre
       sh.addEventListener("pointerdown", () => { pendingSelection = selectedLyricText(); });
       sh.addEventListener("click", share);
     }
     if (pf) pf.addEventListener("click", savePdf);
+
+    // controles del karaoke a pantalla completa
+    const kPlay = $("#kPlay");
+    if (kPlay) kPlay.addEventListener("click", () => {
+      try { if (window.DSKControls) DSKControls.toggle(); } catch (e) {}
+      setTimeout(refreshCtl, 80);
+    });
+    const kVox = $("#kVox");
+    if (kVox) kVox.addEventListener("click", () => {
+      try { if (window.Engine && Engine.setKaraoke) Engine.setKaraoke(!Engine.karaokeOn); } catch (e) {}
+      refreshCtl();
+    });
+    const kClose = $("#kClose");
+    if (kClose) kClose.addEventListener("click", closeKaraoke);
 
     // selector de fuente (LRCLIB / Genius / NetEase)
     if (srcHost && window.UI) {
@@ -467,19 +628,13 @@
     if (b) b.addEventListener("click", (e) => {
       const item = e.target.closest(".lyr-resitem");
       if (item) { openLyric(parseInt(item.getAttribute("data-i"), 10)); return; }
-      const back = e.target.closest("[data-back]");
-      if (back) { stopSync(); renderResults(); return; }
+      const bk = e.target.closest("[data-back]");
+      if (bk) { stopSync(); renderResults(); return; }
       const md = e.target.closest("[data-mode]");
       if (md) { curMode = md.getAttribute("data-mode"); paintLyric(); return; }
-      const act = e.target.closest("[data-act]");
-      if (act) {
-        const a = act.getAttribute("data-act");
-        if (a === "play") { try { if (window.DSKControls) DSKControls.toggle(); } catch (e2) {} setTimeout(refreshCtl, 80); }
-        else if (a === "karaoke") { try { if (window.Engine && Engine.setKaraoke) Engine.setKaraoke(!Engine.karaokeOn); } catch (e2) {} refreshCtl(); }
-      }
     });
 
-    // detener el resaltado si se cierra por la X o tocando el velo
+    // cerrar (X / velo) detiene resaltados
     const modal = $("#lyricsModal");
     if (modal) modal.addEventListener("click", (e) => {
       if (e.target.closest("[data-close]") ||
@@ -489,11 +644,8 @@
     });
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
 
   window.Lyrics = { open, close, back, isOpen };
 })();

@@ -40,6 +40,134 @@
   };
   const stripExt = (s) => (s || "").replace(/\.[^.]+$/, "");
 
+  /* -------- estadísticas de carpeta (nº de pistas + duración total) --------
+     El conteo es barato; la duración exige leer metadatos de cada audio (coste
+     real). Para no malgastar recursos: se guardan {count,dur} por URI en
+     IndexedDB y, al volver a entrar, el nativo SOLO recalcula la duración si el
+     número de archivos cambió. Si el conteo es igual, se reutiliza lo guardado. */
+  const folderStatsCache = {};          // memoria de sesión
+  const folderStatsPending = {};
+  let statsSeq = 0;
+
+  // --- IndexedDB mínima (persiste entre sesiones) ---
+  const STATS_STORE = "folderStats";
+  let _statsDbPromise = null;
+  function statsDB() {
+    if (_statsDbPromise) return _statsDbPromise;
+    _statsDbPromise = new Promise((res) => {
+      try {
+        if (typeof indexedDB === "undefined") return res(null);
+        const r = indexedDB.open("dsklofi", 1);
+        r.onupgradeneeded = () => {
+          const db = r.result;
+          if (!db.objectStoreNames.contains(STATS_STORE)) db.createObjectStore(STATS_STORE);
+        };
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => res(null);
+      } catch (e) { res(null); }
+    });
+    return _statsDbPromise;
+  }
+  function idbGet(key) {
+    return statsDB().then((db) => new Promise((res) => {
+      if (!db) return res(null);
+      try {
+        const rq = db.transaction(STATS_STORE, "readonly").objectStore(STATS_STORE).get(key);
+        rq.onsuccess = () => res(rq.result || null);
+        rq.onerror = () => res(null);
+      } catch (e) { res(null); }
+    }));
+  }
+  function idbSet(key, val) {
+    return statsDB().then((db) => new Promise((res) => {
+      if (!db) return res(false);
+      try {
+        const tx = db.transaction(STATS_STORE, "readwrite");
+        tx.objectStore(STATS_STORE).put(val, key);
+        tx.oncomplete = () => res(true);
+        tx.onerror = () => res(false);
+      } catch (e) { res(false); }
+    }));
+  }
+
+  function fmtDurShort(sec) {
+    sec = Math.round(sec || 0); if (sec <= 0) return "";
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    if (h > 0) return h + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+    return m + ":" + String(s).padStart(2, "0");
+  }
+  function statsLabel(st) {
+    if (!st || !st.count) return "";
+    const n = st.count === 1 ? T("ex_track_one") : T("ex_track_n").replace("{n}", st.count);
+    const d = st.dur > 0 ? "  ·  " + fmtDurShort(st.dur) : "";
+    return n + d;
+  }
+  function installFolderStatsCb() {
+    if (typeof window.DSKBridge === "undefined" || window.DSKBridge.__folderStats) return;
+    window.DSKBridge.__folderStats = function (reqId, json) {
+      const p = folderStatsPending[reqId]; if (!p) return; delete folderStatsPending[reqId];
+      let st = null; try { st = JSON.parse(json); } catch (e) {}
+      if (!st) { if (!p.stored) { try { p.cb(null); } catch (e) {} } return; }
+      // dur < 0 → el nativo indica "conteo sin cambios": reusar la guardada
+      if (st.dur < 0) st = { count: st.count, dur: p.stored ? p.stored.dur : 0 };
+      folderStatsCache[p.uri] = st;
+      idbSet(p.uri, st);
+      try { p.cb(st); } catch (e) {}
+    };
+  }
+  async function fetchFolderStats(uri, cb) {
+    if (folderStatsCache[uri]) { cb(folderStatsCache[uri]); return; }   // ya verificado esta sesión
+    if (!hasBridge("folderStats")) { cb(null); return; }
+    installFolderStatsCb();
+    const stored = await idbGet(uri);          // {count,dur} guardado o null
+    if (stored) cb(stored);                    // pintado optimista inmediato
+    const reqId = "fs" + (++statsSeq) + "_" + Date.now();
+    folderStatsPending[reqId] = { uri: uri, cb: cb, stored: stored };
+    try { window.DSKBridge.folderStats(uri, stored ? stored.count : -1, reqId); }
+    catch (e) { delete folderStatsPending[reqId]; if (!stored) cb(null); }
+  }
+
+  /* -------- estadísticas de LISTA (nº de pistas + duración total) --------
+     Misma idea que en carpetas: se guardan {count,dur} por id de lista en
+     IndexedDB y NO se recalcula la duración si el nº de elementos no cambia.
+     La duración suma metadatos de los items locales (con URI); los items solo
+     de YouTube sin descargar no aportan duración. */
+  function listLabel(st) {
+    if (!st) return "";
+    const base = countLabel(st.count);
+    const d = st.dur > 0 ? "  ·  " + fmtDurShort(st.dur) : "";
+    return base + d;
+  }
+  function installListStatsCb() {
+    if (typeof window.DSKBridge === "undefined" || window.DSKBridge.__urisDuration) return;
+    window.DSKBridge.__urisDuration = function (reqId, durSec) {
+      const p = folderStatsPending[reqId]; if (!p) return; delete folderStatsPending[reqId];
+      const st = { count: p.count, dur: (typeof durSec === "number" ? durSec : parseFloat(durSec) || 0) };
+      folderStatsCache[p.uri] = st; idbSet(p.uri, st);
+      try { p.cb(st); } catch (e) {}
+    };
+  }
+  async function fetchListStats(l, cb) {
+    const key = "list:" + l.id;
+    const count = l.items.length;
+    if (folderStatsCache[key] && folderStatsCache[key].count === count) { cb(folderStatsCache[key]); return; }
+    const stored = await idbGet(key);
+    if (stored && stored.count === count) {           // mismo nº de elementos → reutilizar (no recalcular)
+      folderStatsCache[key] = stored; cb(stored); return;
+    }
+    if (stored) cb(stored);                            // optimista mientras recalcula
+    const localUris = l.items.filter((it) => it.uri).map((it) => it.uri);
+    if (!hasBridge("urisDuration") || !localUris.length) {
+      const st = { count: count, dur: 0 };
+      folderStatsCache[key] = st; idbSet(key, st); cb(st); return;
+    }
+    installListStatsCb();
+    const reqId = "ls" + (++statsSeq) + "_" + Date.now();
+    folderStatsPending[reqId] = { uri: key, cb: cb, stored: stored, count: count };
+    try { window.DSKBridge.urisDuration(JSON.stringify(localUris), reqId); }
+    catch (e) { delete folderStatsPending[reqId]; const st = { count: count, dur: 0 }; idbSet(key, st); cb(st); }
+  }
+
   /* ============================ AYUDA (bilingüe) ============================ */
   const HELP = {
     es:
@@ -130,6 +258,10 @@
     if (Sel.active && ((Sel.kind === "explorer" && tab !== "explore") || (Sel.kind === "list" && tab !== "lists"))) {
       Sel.active = false; Sel.kind = null; Sel.ids.clear(); selUpdateUI();
     }
+    // salir de la selección múltiple del online al dejar esa pestaña
+    if (tab !== "online" && window.DSKYoutubeUI && window.DSKYoutubeUI.exitSelect) {
+      try { window.DSKYoutubeUI.exitSelect(); } catch (e) {}
+    }
     activeTab = tab;
     $$(".lib-tab").forEach((b) => b.classList.toggle("lib-tab--active", b.getAttribute("data-tab") === tab));
     $$(".lib-panel").forEach((p) => p.classList.toggle("lib-panel--active", p.getAttribute("data-panel") === tab));
@@ -154,6 +286,9 @@
   }
   /* abre la biblioteca recordando la última pestaña/carpeta/lista visitada */
   function openLibraryRemembered() {
+    // al volver a abrir, nunca arrancar con selección múltiple activa
+    if (Sel.active) { Sel.active = false; Sel.kind = null; Sel.ids.clear(); selUpdateUI(); }
+    if (window.DSKYoutubeUI && window.DSKYoutubeUI.exitSelect) { try { window.DSKYoutubeUI.exitSelect(); } catch (e) {} }
     DSKQueue.open();
     const st = loadViewState();
     if (st && st.tab === "explore" && Array.isArray(st.path) && st.path.length && explorerSupported()) {
@@ -212,6 +347,9 @@
     add("m_play_next", () => { DSKQueue.enqueueNext([menuItem(ctx)]); UI.toast(T("q_added_next")); });
     add("m_play_last", () => { DSKQueue.enqueueLast([menuItem(ctx)]); UI.toast(T("q_added_last")); });
     add("m_add_list", () => openListPick(menuItem(ctx)));
+    // editar etiquetas ID3: solo archivos locales (URI), no pistas de YouTube
+    const mi = menuItem(ctx);
+    if (mi && mi.uri && !mi.ytId && window.DSKTagEditor) add("m_edit_tags", () => DSKTagEditor.open(mi));
     if (ctx.kind === "queue") add("m_remove", () => { DSKQueue.remove(ctx.index); UI.toast(T("q_removed")); }, true);
     if (ctx.kind === "list") add("m_remove", () => { listRemoveTrack(ctx.listId, ctx.index); }, true);
     UI.openModal("trackMenuModal");
@@ -309,6 +447,27 @@
     if (Sel.ids.has(key)) Sel.ids.delete(key); else Sel.ids.add(key);
     if (row) row.classList.toggle("lib-row--checked", Sel.ids.has(key));
     selUpdateUI();
+  }
+  // entra en selección y marca de una vez el elemento de la pulsación larga
+  function selEnterWith(kind, key) {
+    Sel.active = true; Sel.kind = kind; Sel.ids.clear();
+    if (key !== null && key !== undefined) Sel.ids.add(key);
+    selUpdateUI();
+    if (kind === "explorer") renderExplorer(); else if (kind === "list") renderListDetail();
+  }
+  // pulsación larga sobre una fila → ejecuta onLong (activar selección)
+  let lpGuard = 0;
+  function attachLongPress(row, onLong) {
+    let timer = 0, x = 0, y = 0;
+    const clear = () => { if (timer) { clearTimeout(timer); timer = 0; } };
+    row.addEventListener("pointerdown", (e) => {
+      x = e.clientX; y = e.clientY; clear();
+      timer = setTimeout(() => { timer = 0; lpGuard = Date.now(); onLong(); try { if (navigator.vibrate) navigator.vibrate(15); } catch (_) {} }, 450);
+    });
+    row.addEventListener("pointermove", (e) => { if (timer && (Math.abs(e.clientX - x) > 10 || Math.abs(e.clientY - y) > 10)) clear(); });
+    row.addEventListener("pointerup", clear);
+    row.addEventListener("pointercancel", clear);
+    row.addEventListener("pointerleave", clear);
   }
   /* items {name,uri,...} en el orden mostrado, según el modo activo */
   function selGatherItems() {
@@ -533,8 +692,12 @@
     const row = document.createElement("div");
     row.className = "lib-row lib-row--folder";
     row.innerHTML = '<span class="lib-row__ic">' + IC.folder + '</span><span class="lib-row__name"></span>' +
+      '<span class="lib-row__sub lib-row__stats"></span>' +
       '<button class="lib-row__act" type="button" aria-label="' + T("ex_play_folder") + '">' + IC.play + '</button>';
     row.querySelector(".lib-row__name").textContent = e.name;
+    // nº de pistas + duración total (carga diferida + caché)
+    const statsEl = row.querySelector(".lib-row__stats");
+    fetchFolderStats(e.uri, (st) => { if (statsEl) statsEl.textContent = statsLabel(st); });
     row.addEventListener("click", () => enterFolder(e.uri, e.name));
     row.querySelector(".lib-row__act").addEventListener("click", (ev) => { ev.stopPropagation(); playFolderUri(e.uri, e.name); });
     return row;
@@ -548,9 +711,10 @@
       (selecting ? '' : '<button class="lib-row__act" type="button" aria-label="…">' + IC.dots + '</button>');
     row.querySelector(".lib-row__name").textContent = stripExt(e.name);
     if (selecting) {
-      row.addEventListener("click", () => selToggleItem(e.uri, row));
+      row.addEventListener("click", () => { if (Date.now() - lpGuard < 500) return; selToggleItem(e.uri, row); });
     } else {
       row.addEventListener("click", () => playExplorerAudio(i));
+      attachLongPress(row, () => selEnterWith("explorer", e.uri));
       row.querySelector(".lib-row__act").addEventListener("click", (ev) => {
         ev.stopPropagation();
         openTrackMenu({ kind: "explorer", index: i, item: { name: e.name, uri: e.uri, path: e.path || null } });
@@ -620,7 +784,9 @@
         '<span class="lib-row__name"></span><span class="lib-row__sub"></span>' +
         '<button class="lib-row__act" type="button" aria-label="…">' + IC.dots + '</button>';
       row.querySelector(".lib-row__name").textContent = l.name;
-      row.querySelector(".lib-row__sub").textContent = countLabel(l.items.length);
+      const subEl = row.querySelector(".lib-row__sub");
+      subEl.textContent = countLabel(l.items.length);                 // conteo inmediato
+      fetchListStats(l, (st) => { if (subEl) subEl.textContent = listLabel(st); });
       row.addEventListener("click", () => showListDetail(l.id));
       row.querySelector(".lib-row__play").addEventListener("click", (e) => { e.stopPropagation(); playList(l.id, 0); });
       row.querySelector(".lib-row__act").addEventListener("click", (e) => { e.stopPropagation(); openListMenu(l.id); });
@@ -669,7 +835,7 @@
       if (selecting) {
         row.innerHTML = '<span class="lib-row__chk">' + IC.check + '</span><span class="lib-row__name"></span>';
         row.querySelector(".lib-row__name").textContent = stripExt(it.name);
-        row.addEventListener("click", () => selToggleItem(i, row));
+        row.addEventListener("click", () => { if (Date.now() - lpGuard < 500) return; selToggleItem(i, row); });
       } else {
         row.innerHTML = '<span class="lib-row__ord"></span><span class="lib-row__name"></span>' +
           '<button class="lib-row__mv" data-d="-1" type="button" aria-label="▲">▲</button>' +
@@ -678,6 +844,7 @@
         row.querySelector(".lib-row__ord").textContent = (i + 1);
         row.querySelector(".lib-row__name").textContent = stripExt(it.name);
         row.addEventListener("click", () => playList(detailId, i));
+        attachLongPress(row, () => selEnterWith("list", i));
         row.querySelectorAll(".lib-row__mv").forEach((mb) => mb.addEventListener("click", (e) => {
           e.stopPropagation(); listMove(detailId, i, parseInt(mb.getAttribute("data-d"), 10));
         }));

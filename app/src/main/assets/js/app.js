@@ -1095,7 +1095,7 @@
         if (zz >= z) { z = zz; top = m; }
       });
       // el modal de letras: primero volver a la lista de resultados (si la hay)
-      if (top.id === "lyricsModal" && window.Lyrics && Lyrics.back) { Lyrics.back(); return true; }
+      if ((top.id === "lyricsModal" || top.id === "karaokeModal") && window.Lyrics && Lyrics.back) { Lyrics.back(); return true; }
       if (window.UI && UI.closeModal) UI.closeModal(top.id);
       else { top.classList.remove("modal--open"); top.setAttribute("aria-hidden", "true"); }
       return true;
@@ -3199,11 +3199,132 @@
     /* ============================ ARTWORK (CARÁTULA) ============================ */
     initArtwork();
 
+    /* ============================ EDITOR DE ETIQUETAS ID3 ============================ */
+    initTagEditor();
+
     /* ============================ SHAZAM (AudD) ============================ */
     initShazam();
 
     /* fundir la pantalla de carga: tras 'load' y un mínimo en pantalla */
     scheduleSplashHide();
+  }
+
+  /* ---- editor de etiquetas ID3 (título/artista/álbum/track + carátula) ----
+     Reutiliza shrinkCover() para reescalar la carátula nueva. Lectura/escritura
+     reales por el bridge nativo (readTags/writeTags por URI SAF). */
+  function initTagEditor() {
+    const modal = $("#tagEditModal");
+    if (!modal) return;
+    const elImg = $("#tagCoverImg"), elNone = $("#tagCoverNone");
+    const fTitle = $("#tagFTitle"), fArtist = $("#tagFArtist"), fAlbum = $("#tagFAlbum"), fTrack = $("#tagFTrack");
+    const pick = $("#tagCoverPick"), clear = $("#tagCoverClear"), input = $("#tagCoverInput"), save = $("#tagSave");
+    const coverSave = $("#tagCoverSave");
+
+    let curUri = "";
+    let coverState = "";     // "" = no tocar · " " = quitar · base64 = nueva
+    let shownCover = "";     // carátula actualmente visible (para "guardar")
+    const pendingCb = {};
+    let seq = 0, busy = false;
+
+    function hasFn(m) { return typeof window.DSKBridge !== "undefined" && typeof window.DSKBridge[m] === "function"; }
+    function stripExtName(s) { return (s || "").replace(/\.[^.]+$/, ""); }
+
+    function installCb() {
+      if (typeof window.DSKBridge === "undefined") return;
+      if (!window.DSKBridge.__tagsRead) window.DSKBridge.__tagsRead = function (reqId, json) {
+        const p = pendingCb[reqId]; if (!p) return; delete pendingCb[reqId];
+        let o = {}; try { o = JSON.parse(json) || {}; } catch (e) {} p(o);
+      };
+      if (!window.DSKBridge.__tagsWritten) window.DSKBridge.__tagsWritten = function (reqId, ok) {
+        const p = pendingCb[reqId]; if (!p) return; delete pendingCb[reqId];
+        p(ok === true || ok === "true");
+      };
+    }
+
+    function showCover(b64) {
+      shownCover = b64 || "";
+      if (b64) { elImg.src = "data:image/jpeg;base64," + b64; elImg.hidden = false; elNone.hidden = true; }
+      else { elImg.removeAttribute("src"); elImg.hidden = true; elNone.hidden = false; }
+      if (coverSave) coverSave.hidden = !b64;
+    }
+
+    function open(item) {
+      if (!item || !item.uri || item.ytId) { UI.toast(I18n.t("tag_local_only")); return; }
+      if (!hasFn("readTags") || !hasFn("writeTags")) { UI.toast(I18n.t("tag_app_only")); return; }
+      curUri = item.uri; coverState = ""; busy = false;
+      fTitle.value = stripExtName(item.name || ""); fArtist.value = ""; fAlbum.value = ""; fTrack.value = "";
+      showCover("");
+      UI.openModal("tagEditModal");
+      installCb();
+      const reqId = "tr" + (++seq) + "_" + Date.now();
+      const mine = curUri;
+      pendingCb[reqId] = (o) => {
+        if (curUri !== mine) return;
+        if (o.title) fTitle.value = o.title;
+        if (o.artist) fArtist.value = o.artist;
+        if (o.album) fAlbum.value = o.album;
+        if (o.track) fTrack.value = o.track;
+        showCover(o.cover || "");
+      };
+      try { window.DSKBridge.readTags(curUri, reqId); } catch (e) { delete pendingCb[reqId]; }
+    }
+
+    if (pick) pick.addEventListener("click", () => input && input.click());
+    // guardar/descargar la carátula visible (la del archivo) antes de sustituirla
+    if (coverSave) coverSave.addEventListener("click", () => {
+      if (!shownCover) return;
+      const base = (fArtist.value.trim() + " " + fTitle.value.trim()).trim() || "cover";
+      const filename = "cover_" + base.replace(/[^a-z0-9]/gi, "_").slice(0, 40) + ".jpg";
+      if (hasFn("saveImage")) window.DSKBridge.saveImage(shownCover, filename); // toast nativo
+      else {
+        const a = document.createElement("a");
+        a.href = "data:image/jpeg;base64," + shownCover;
+        a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        UI.toast(I18n.t("aw_saved"));
+      }
+    });
+    if (input) input.addEventListener("change", async (e) => {
+      const f = e.target.files && e.target.files[0]; e.target.value = "";
+      if (!f) return;
+      try {
+        const buf = await f.arrayBuffer();
+        const b64 = await shrinkCover(new Uint8Array(buf));
+        if (b64) { coverState = b64; showCover(b64); }
+        else UI.toast(I18n.t("err_decode"));
+      } catch (err) {}
+    });
+    if (clear) clear.addEventListener("click", async () => {
+      if (!shownCover) { coverState = " "; showCover(""); return; }
+      const ok = (UI && UI.confirm)
+        ? await UI.confirm({ title: I18n.t("tag_cover_remove"), message: I18n.t("tag_cover_remove_ask"), confirmLabel: I18n.t("tag_cover_remove"), cancelLabel: I18n.t("cancel"), danger: true })
+        : true;
+      if (ok) { coverState = " "; showCover(""); }
+    });
+
+    if (save) save.addEventListener("click", () => {
+      if (busy || !curUri) return;
+      busy = true;
+      installCb();
+      const reqId = "tw" + (++seq) + "_" + Date.now();
+      const to = setTimeout(() => {
+        if (pendingCb[reqId]) { delete pendingCb[reqId]; busy = false; UI.toast(I18n.t("tag_save_fail"), "danger"); }
+      }, 30000);
+      pendingCb[reqId] = (ok) => {
+        clearTimeout(to); busy = false;
+        if (ok) {
+          UI.toast(I18n.t("tag_saved"));
+          UI.closeModal("tagEditModal");
+          if (window.DSKLib && DSKLib.refresh) DSKLib.refresh();
+        } else UI.toast(I18n.t("tag_save_fail"), "danger");
+      };
+      try {
+        window.DSKBridge.writeTags(curUri, fTitle.value.trim(), fArtist.value.trim(),
+          fAlbum.value.trim(), fTrack.value.trim(), coverState, reqId);
+      } catch (e) { clearTimeout(to); busy = false; UI.toast(I18n.t("tag_save_fail"), "danger"); }
+    });
+
+    window.DSKTagEditor = { open };
   }
 
   /* ---- modal de carátula a pantalla completa ---- */

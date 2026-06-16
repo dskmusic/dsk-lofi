@@ -59,6 +59,7 @@
   const DSKYT = {
     search(query) { return call("search", query); },
     resolve(videoId) { return call("resolveAudio", videoId).then((a) => (a && a[0]) || null); },
+    resolvePlaylist(urlOrId) { return call("resolvePlaylist", urlOrId); },
     download(videoId) { return call("downloadAudio", videoId).then((a) => (a && a[0]) || null); }
   };
   window.DSKYT = DSKYT;
@@ -74,7 +75,7 @@
 
   function host() { return $("#ytItems"); }
   function setHost(html) { const h = host(); if (h) h.innerHTML = html; }
-  function state(msg) { setHost('<div class="yt-state">' + esc(msg) + "</div>"); }
+  function state(msg) { setHost('<div class="yt-state">' + esc(msg) + "</div>"); const f = $("#ytFoot"); if (f) f.hidden = true; }
 
   function curVer() {
     try { return (window.DSKYoutube && DSKYoutube.libVersion) ? DSKYoutube.libVersion() : ""; }
@@ -82,6 +83,8 @@
   }
   // Estado inicial: mensaje + versión de NewPipe usada; comprueba online la última.
   function setEmpty() {
+    results = []; sel.on = false; sel.ids.clear();
+    const foot = $("#ytFoot"); if (foot) foot.hidden = true;
     const cv = curVer();
     setHost('<div class="yt-state">' + esc(t("on_empty")) + "</div>" +
             '<div class="yt-ver" id="ytVer">' + (cv ? esc(t("on_lib_using")) + " " + esc(cv) : "") + "</div>");
@@ -104,25 +107,84 @@
 
   const IC_DL = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 11 5 5 5-5"></path><path d="M5 21h14"></path></svg>';
   const IC_ADD = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>';
+  const IC_CHECK = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
 
   let results = [];
+  const sel = { on: false, ids: new Set() };   // selección múltiple (por videoId)
 
   function render() {
-    if (!results.length) { state(t("on_notfound")); return; }
+    if (!results.length) { sel.on = false; sel.ids.clear(); state(t("on_notfound")); return; }
+    const selecting = sel.on;
     let h = "";
     results.forEach((r, i) => {
       const sub = [r.uploader, fmtDur(r.duration)].filter(Boolean).join(" · ");
-      h += '<div class="yt-row" data-i="' + i + '" data-vid="' + esc(r.videoId) + '">' +
+      const checked = selecting && sel.ids.has(r.videoId);
+      h += '<div class="yt-row' + (checked ? " yt-row--checked" : "") + '" data-i="' + i + '" data-vid="' + esc(r.videoId) + '">' +
            (r.thumb ? '<img class="yt-row__thumb" src="' + esc(r.thumb) + '" alt="" loading="lazy">' : '<span class="yt-row__thumb"></span>') +
            '<span class="yt-row__main">' +
            '<span class="yt-row__title">' + esc(r.title) + "</span>" +
            '<span class="yt-row__sub">' + esc(sub) + "</span></span>" +
-           '<button class="yt-row__act" type="button" data-dl="' + i + '" aria-label="' + esc(t("on_download")) + '">' + IC_DL + "</button>" +
-           '<button class="yt-row__act" type="button" data-add="' + i + '" aria-label="' + esc(t("on_add_list")) + '">' + IC_ADD + "</button>" +
+           (selecting
+             ? '<span class="yt-row__chk">' + IC_CHECK + "</span>"
+             : '<button class="yt-row__act" type="button" data-dl="' + i + '" aria-label="' + esc(t("on_download")) + '">' + IC_DL + "</button>" +
+               '<button class="yt-row__act" type="button" data-add="' + i + '" aria-label="' + esc(t("on_add_list")) + '">' + IC_ADD + "</button>") +
            '<div class="yt-row__bar"><span class="yt-row__barfill"></span></div>' +
            "</div>";
     });
     setHost(h);
+    updateFoot();
+  }
+
+  /* ---- barra inferior fija: todo / selección múltiple ---- */
+  function updateFoot() {
+    const foot = $("#ytFoot"); if (!foot) return;
+    const selecting = sel.on && results.length > 0;
+    // footer visible si hay >1 resultado (para "todo") o si estamos seleccionando
+    foot.hidden = !(results.length > 1 || selecting);
+    const set = (id, show) => { const b = $("#" + id); if (b) b.hidden = !show; };
+    set("ytFootCount", selecting);
+    set("ytSelectToggle", !selecting);
+    set("ytAddAll", !selecting);
+    set("ytDlAll", !selecting);
+    set("ytSelPlay", selecting);
+    set("ytSelAdd", selecting);
+    set("ytSelDl", selecting);
+    set("ytSelCancel", selecting);
+    if (selecting) {
+      const c = $("#ytFootCount"); if (c) c.textContent = String(sel.ids.size);
+      const dis = sel.ids.size === 0;
+      ["ytSelPlay", "ytSelAdd", "ytSelDl"].forEach((id) => { const b = $("#" + id); if (b) b.disabled = dis; });
+    }
+  }
+
+  function enterSelect(vid) { sel.on = true; if (vid) sel.ids.add(vid); render(); }
+  function exitSelect() { sel.on = false; sel.ids.clear(); render(); }
+  function toggleSel(vid) {
+    if (!vid) return;
+    if (sel.ids.has(vid)) sel.ids.delete(vid); else sel.ids.add(vid);
+    const row = rowByVid(vid);
+    if (row) row.classList.toggle("yt-row--checked", sel.ids.has(vid));
+    updateFoot();
+  }
+  function selectedResults() { return results.filter((r) => sel.ids.has(r.videoId)); }
+  function playSelected() {
+    const rs = selectedResults(); if (!rs.length || !window.DSKQueue) return;
+    DSKQueue.load(rs.map(itemOf), 0, { type: "online", name: "YouTube" });
+    exitSelect();
+  }
+  function addSelectedToList() {
+    const rs = selectedResults(); if (!rs.length) return;
+    if (window.DSKLists && DSKLists.add) DSKLists.add(rs.map(itemOf));
+    else if (window.UI) UI.toast(t("on_browser"));
+    exitSelect();
+  }
+  function downloadSelected() {
+    const rs = selectedResults(); if (!rs.length) return;
+    if (!(window.DSKDownloads && DSKDownloads.enqueue)) { if (window.UI) UI.toast(t("on_browser")); return; }
+    let n = 0;
+    rs.forEach((r) => { try { DSKDownloads.enqueue(r.videoId, r.title || "", r.thumb || ""); setBar(r.videoId, 2, false); n++; } catch (e) {} });
+    if (window.UI) UI.toast(t("on_dl_all_started").replace("{n}", n));
+    exitSelect();
   }
 
   function itemOf(r) {
@@ -261,6 +323,26 @@
     if (window.UI) UI.toast(t("on_queued"));
   }
 
+  // Descargas en lote: encola TODOS los resultados obtenidos.
+  function batchDownload() {
+    if (!results.length) return;
+    if (!(window.DSKDownloads && DSKDownloads.enqueue)) { if (window.UI) UI.toast(t("on_browser")); return; }
+    let n = 0;
+    results.forEach((r) => {
+      if (!r || !r.videoId) return;
+      try { DSKDownloads.enqueue(r.videoId, r.title || "", r.thumb || ""); setBar(r.videoId, 2, false); n++; }
+      catch (e) {}
+    });
+    if (window.UI) UI.toast(t("on_dl_all_started").replace("{n}", n));
+  }
+
+  // Añadir todos los resultados a una lista (abre el selector de lista de la app).
+  function addAll() {
+    if (!results.length) return;
+    if (window.DSKLists && DSKLists.add) DSKLists.add(results.map(itemOf));
+    else if (window.UI) UI.toast(t("on_browser"));
+  }
+
   // Detecta y extrae el ID de vídeo de una URL de YouTube en sus formas comunes:
   //   youtu.be/ID, youtube.com/watch?v=ID, /shorts/ID, /embed/ID, /v/ID, /live/ID
   //   con cualquier parámetro extra (?si=, &t=, &list=…) y dominios .com/.es/… o music.
@@ -282,6 +364,37 @@
   }
 
   // Resuelve una URL de YouTube → muestra ESE único vídeo como resultado.
+  // Detecta el ID de una lista de reproducción en una URL de YouTube (list=…).
+  function parseYouTubePlaylistId(str) {
+    const s = (str || "").trim();
+    if (!s) return null;
+    if (!/(?:youtu\.be|youtube\.com|music\.youtube\.[a-z.]+|youtube\.[a-z.]+)/i.test(s)) return null;
+    const m = s.match(/[?&]list=([A-Za-z0-9_-]+)/);
+    if (m && m[1] && !/^WL$/i.test(m[1])) return m[1]; // WL = "Ver más tarde" (privada)
+    return null;
+  }
+
+  // Carga una lista de reproducción completa en los resultados.
+  async function openPlaylist(arg) {
+    state(t("on_playlist_loading"));
+    try {
+      const arr = await DSKYT.resolvePlaylist(arg);
+      if (!arr || !arr.length) { results = []; state(t("on_notfound")); return; }
+      results = arr.map((r) => ({
+        videoId: r.videoId,
+        title: r.title || r.videoId,
+        uploader: r.uploader || "",
+        duration: r.duration || 0,
+        thumb: r.thumb || ("https://i.ytimg.com/vi/" + r.videoId + "/hqdefault.jpg")
+      }));
+      render();
+    } catch (code) {
+      results = [];
+      if (code === "browser") state(t("on_browser"));
+      else state(t("on_error"));
+    }
+  }
+
   async function openByUrl(videoId) {
     state(t("on_searching"));
     try {
@@ -305,8 +418,12 @@
   async function run(query) {
     query = (query || "").trim();
     if (!query) return;
+    sel.on = false; sel.ids.clear();   // nueva búsqueda → salir de selección
     // ¿es una URL de YouTube? → abrir ese vídeo como resultado único
     const vid = parseYouTubeId(query);
+    const plid = parseYouTubePlaylistId(query);
+    // lista de reproducción (sin vídeo concreto) → cargar la lista entera
+    if (plid && !vid) { openPlaylist(query); return; }
     if (vid) { openByUrl(vid); return; }
     state(t("on_searching"));
     try {
@@ -327,14 +444,53 @@
     if (inp) inp.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); inp.blur(); run(inp.value); }
     });
-    if (items) items.addEventListener("click", (e) => {
-      const dl = e.target.closest("[data-dl]");
-      if (dl) { e.stopPropagation(); enqueueDownload(parseInt(dl.getAttribute("data-dl"), 10)); return; }
-      const add = e.target.closest("[data-add]");
-      if (add) { e.stopPropagation(); addToList(parseInt(add.getAttribute("data-add"), 10)); return; }
-      const row = e.target.closest(".yt-row");
-      if (row) play(parseInt(row.getAttribute("data-i"), 10));
-    });
+
+    // pulsación larga sobre una fila → activa selección múltiple
+    let lpTimer = 0, lpVid = "", lpFired = false, lpX = 0, lpY = 0;
+    const clearLp = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = 0; } };
+    if (items) {
+      items.addEventListener("pointerdown", (e) => {
+        const row = e.target.closest(".yt-row"); if (!row) return;
+        lpFired = false; lpVid = row.getAttribute("data-vid"); lpX = e.clientX; lpY = e.clientY;
+        clearLp();
+        lpTimer = setTimeout(() => {
+          lpFired = true;
+          if (!sel.on) enterSelect(lpVid); else toggleSel(lpVid);
+          try { if (navigator.vibrate) navigator.vibrate(15); } catch (_) {}
+        }, 450);
+      });
+      items.addEventListener("pointermove", (e) => {
+        if (lpTimer && (Math.abs(e.clientX - lpX) > 10 || Math.abs(e.clientY - lpY) > 10)) clearLp();
+      });
+      items.addEventListener("pointerup", clearLp);
+      items.addEventListener("pointercancel", clearLp);
+      items.addEventListener("pointerleave", clearLp);
+
+      items.addEventListener("click", (e) => {
+        if (lpFired) { lpFired = false; e.preventDefault(); e.stopPropagation(); return; }
+        if (sel.on) {
+          const row = e.target.closest(".yt-row");
+          if (row) toggleSel(row.getAttribute("data-vid"));
+          return;
+        }
+        const dl = e.target.closest("[data-dl]");
+        if (dl) { e.stopPropagation(); enqueueDownload(parseInt(dl.getAttribute("data-dl"), 10)); return; }
+        const add = e.target.closest("[data-add]");
+        if (add) { e.stopPropagation(); addToList(parseInt(add.getAttribute("data-add"), 10)); return; }
+        const row = e.target.closest(".yt-row");
+        if (row) play(parseInt(row.getAttribute("data-i"), 10));
+      });
+    }
+
+    // barra inferior fija
+    const bind = (id, fn) => { const b = $("#" + id); if (b) b.addEventListener("click", fn); };
+    bind("ytSelectToggle", () => { if (sel.on) exitSelect(); else enterSelect(""); });
+    bind("ytAddAll", addAll);
+    bind("ytDlAll", batchDownload);
+    bind("ytSelPlay", playSelected);
+    bind("ytSelAdd", addSelectedToList);
+    bind("ytSelDl", downloadSelected);
+    bind("ytSelCancel", exitSelect);
 
     installDlCallbacks();
     setEmpty();
@@ -347,7 +503,8 @@
       const inp = $("#ytSearch");
       if (inp) inp.value = q || "";
       run(q || "");
-    }
+    },
+    exitSelect: function () { if (sel.on) exitSelect(); }
   };
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

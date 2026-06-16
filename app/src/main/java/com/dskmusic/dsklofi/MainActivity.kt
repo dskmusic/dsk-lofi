@@ -1341,6 +1341,177 @@ class MainActivity : Activity() {
             }
         }
 
+        // Estadísticas de una carpeta: nº de audios + duración total (segundos).
+        // El conteo es barato (una query SAF). La duración exige abrir cada audio
+        // con MediaMetadataRetriever (parte costosa). Si knownCount >= 0 y coincide
+        // con el conteo actual, NO se recalcula la duración (dur = -1) y el lado JS
+        // reutiliza la guardada. Todo en segundo plano.
+        // Responde por window.DSKBridge.__folderStats(reqId, json{count,dur}).
+        @JavascriptInterface
+        fun folderStats(folderUriString: String, knownCount: Int, reqId: String) {
+            val uri = Uri.parse(folderUriString)
+            browsePool.execute {
+                var count = 0
+                var durMs = 0L
+                var skipDur = false
+                try {
+                    val isTree = !uri.toString().contains("/document/")
+                    val parentId = if (isTree) DocumentsContract.getTreeDocumentId(uri)
+                                   else DocumentsContract.getDocumentId(uri)
+                    val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(uri, parentId)
+                    val audioUris = ArrayList<Uri>()
+                    contentResolver.query(
+                        childrenUri,
+                        arrayOf(
+                            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                            DocumentsContract.Document.COLUMN_MIME_TYPE
+                        ), null, null, null
+                    )?.use { c ->
+                        val di = c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                        val ni = c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                        val mi = c.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                        while (c.moveToNext()) {
+                            val cid = if (di >= 0) c.getString(di) else continue
+                            val nm = if (ni >= 0) c.getString(ni) ?: "" else ""
+                            val mime = if (mi >= 0) c.getString(mi) ?: "" else ""
+                            if (mime == DocumentsContract.Document.MIME_TYPE_DIR) continue
+                            if (mime.startsWith("audio") || AUDIO_EXT.containsMatchIn(nm)) {
+                                count++
+                                audioUris.add(DocumentsContract.buildDocumentUriUsingTree(uri, cid))
+                            }
+                        }
+                    }
+                    // conteo sin cambios → no recalcular la duración
+                    if (knownCount >= 0 && knownCount == count) {
+                        skipDur = true
+                    } else {
+                        for (au in audioUris) {
+                            val mmr = android.media.MediaMetadataRetriever()
+                            try {
+                                mmr.setDataSource(this@MainActivity, au)
+                                val d = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                                durMs += d?.toLongOrNull() ?: 0L
+                            } catch (e: Exception) {
+                            } finally { try { mmr.release() } catch (e: Exception) {} }
+                        }
+                    }
+                } catch (e: Exception) {}
+                val durOut = if (skipDur) -1.0 else durMs / 1000.0
+                val json = org.json.JSONObject().put("count", count).put("dur", durOut).toString()
+                val payload = org.json.JSONObject.quote(json)
+                runJs("window.DSKBridge&&window.DSKBridge.__folderStats&&window.DSKBridge.__folderStats(${org.json.JSONObject.quote(reqId)},$payload)")
+            }
+        }
+
+        // Suma la duración (segundos) de una lista de URIs de audio. Se usa para
+        // la duración total de una LISTA. Solo se llama cuando cambia el nº de
+        // elementos (el lado JS cachea por id de lista).
+        // Responde por window.DSKBridge.__urisDuration(reqId, durSeg).
+        @JavascriptInterface
+        fun urisDuration(urisJson: String, reqId: String) {
+            browsePool.execute {
+                var durMs = 0L
+                try {
+                    val arr = org.json.JSONArray(urisJson)
+                    for (i in 0 until arr.length()) {
+                        val u = arr.optString(i, "")
+                        if (u.isBlank()) continue
+                        val mmr = android.media.MediaMetadataRetriever()
+                        try {
+                            mmr.setDataSource(this@MainActivity, Uri.parse(u))
+                            val d = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                            durMs += d?.toLongOrNull() ?: 0L
+                        } catch (e: Exception) {
+                        } finally { try { mmr.release() } catch (e: Exception) {} }
+                    }
+                } catch (e: Exception) {}
+                val durSec = durMs / 1000.0
+                runJs("window.DSKBridge&&window.DSKBridge.__urisDuration&&window.DSKBridge.__urisDuration(${org.json.JSONObject.quote(reqId)},$durSec)")
+            }
+        }
+
+        // Lee las etiquetas ID3 de un audio (título/artista/álbum/track + carátula).
+        // Responde por window.DSKBridge.__tagsRead(reqId, json).
+        @JavascriptInterface
+        fun readTags(uriString: String, reqId: String) {
+            val uri = Uri.parse(uriString)
+            browsePool.execute {
+                val obj = org.json.JSONObject()
+                var tmp: File? = null
+                try {
+                    val name = queryDisplayName(uri)
+                    val ext = name.substringAfterLast('.', "mp3").lowercase()
+                    tmp = File(cacheDir, "tagrd_" + System.nanoTime() + "." + ext)
+                    contentResolver.openInputStream(uri)?.use { input -> tmp!!.outputStream().use { input.copyTo(it) } }
+                    val af = org.jaudiotagger.audio.AudioFileIO.read(tmp)
+                    val tag = af.tag
+                    fun g(k: org.jaudiotagger.tag.FieldKey): String =
+                        try { tag?.getFirst(k) ?: "" } catch (e: Exception) { "" }
+                    obj.put("name", name)
+                    obj.put("title", g(org.jaudiotagger.tag.FieldKey.TITLE))
+                    obj.put("artist", g(org.jaudiotagger.tag.FieldKey.ARTIST))
+                    obj.put("album", g(org.jaudiotagger.tag.FieldKey.ALBUM))
+                    obj.put("track", g(org.jaudiotagger.tag.FieldKey.TRACK))
+                    val art = try { tag?.firstArtwork } catch (e: Exception) { null }
+                    val bin = art?.binaryData
+                    if (bin != null && bin.isNotEmpty()) obj.put("cover", Base64.encodeToString(bin, Base64.NO_WRAP))
+                } catch (e: Throwable) {
+                } finally { try { tmp?.delete() } catch (e: Exception) {} }
+                val payload = org.json.JSONObject.quote(obj.toString())
+                runJs("window.DSKBridge&&window.DSKBridge.__tagsRead&&window.DSKBridge.__tagsRead(${org.json.JSONObject.quote(reqId)},$payload)")
+            }
+        }
+
+        // Escribe etiquetas ID3 sobre el archivo (copia temporal → jaudiotagger →
+        // se vuelca de vuelta al URI SAF con "wt"). coverB64 vacío = no tocar la
+        // carátula; un solo espacio " " = borrar la carátula. Campos vacíos se
+        // borran. Necesita permiso de ESCRITURA en la carpeta (las carpetas
+        // nuevas ya lo piden; las antiguas hay que re-vincularlas).
+        // Responde por window.DSKBridge.__tagsWritten(reqId, okBool).
+        @JavascriptInterface
+        fun writeTags(uriString: String, title: String, artist: String, album: String,
+                      track: String, coverB64: String, reqId: String) {
+            val uri = Uri.parse(uriString)
+            browsePool.execute {
+                var ok = false
+                var tmp: File? = null
+                try {
+                    val name = queryDisplayName(uri)
+                    val ext = name.substringAfterLast('.', "mp3").lowercase()
+                    tmp = File(cacheDir, "tagwr_" + System.nanoTime() + "." + ext)
+                    contentResolver.openInputStream(uri)?.use { input -> tmp!!.outputStream().use { input.copyTo(it) } }
+                    val af = org.jaudiotagger.audio.AudioFileIO.read(tmp)
+                    val tag = af.tagOrCreateAndSetDefault
+                    fun setOrDel(k: org.jaudiotagger.tag.FieldKey, v: String) {
+                        try { if (v.isBlank()) { try { tag.deleteField(k) } catch (e: Exception) {} } else tag.setField(k, v) } catch (e: Exception) {}
+                    }
+                    setOrDel(org.jaudiotagger.tag.FieldKey.TITLE, title)
+                    setOrDel(org.jaudiotagger.tag.FieldKey.ARTIST, artist)
+                    setOrDel(org.jaudiotagger.tag.FieldKey.ALBUM, album)
+                    setOrDel(org.jaudiotagger.tag.FieldKey.TRACK, track)
+                    if (coverB64 == " ") {
+                        try { tag.deleteArtworkField() } catch (e: Exception) {}
+                    } else if (coverB64.isNotBlank()) {
+                        try {
+                            val bytes = Base64.decode(coverB64, Base64.DEFAULT)
+                            val pic = org.jaudiotagger.tag.images.AndroidArtwork()
+                            pic.binaryData = bytes
+                            pic.mimeType = "image/jpeg"
+                            try { tag.deleteArtworkField() } catch (e: Exception) {}
+                            tag.setField(pic)
+                        } catch (e: Exception) {}
+                    }
+                    af.commit()
+                    contentResolver.openOutputStream(uri, "wt")?.use { out -> tmp!!.inputStream().use { it.copyTo(out) } }
+                        ?: throw java.io.IOException("no output stream")
+                    ok = true
+                } catch (e: Throwable) {
+                } finally { try { tmp?.delete() } catch (e: Exception) {} }
+                runJs("window.DSKBridge&&window.DSKBridge.__tagsWritten&&window.DSKBridge.__tagsWritten(${org.json.JSONObject.quote(reqId)},${if (ok) "true" else "false"})")
+            }
+        }
+
         // Lee un audio por URI estable como base64 (fallback si el stream fallara).
         @JavascriptInterface
         fun readUri(uriString: String): String {
@@ -1637,8 +1808,13 @@ class MainActivity : Activity() {
 
     private fun addRoot(treeUri: Uri) {
         try {
-            contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        } catch (e: Exception) {}
+            contentResolver.takePersistableUriPermission(
+                treeUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        } catch (e: Exception) {
+            try { contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (e2: Exception) {}
+        }
         val cur = loadRoots().toMutableList()
         if (cur.none { it.toString() == treeUri.toString() }) cur.add(treeUri)
         saveRoots(cur)
