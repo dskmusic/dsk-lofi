@@ -51,6 +51,7 @@
         sec_reverb: "REVERB",
         sec_delay: "DELAY",
         sec_chorus: "CHORUS",
+        sec_space: "SPACE",
         sec_output: "OUTPUT",
         sec_export: "EXPORT",
         presets: "PRESETS",
@@ -66,8 +67,10 @@
         p_dl_time: "TIME", p_dl_fb: "FEEDBACK", p_dl_mix: "MIX",
         /* chorus */
         p_ch_rate: "RATE", p_ch_depth: "DEPTH", p_ch_mix: "MIX",
+        /* space */
+        p_sp_width: "WIDTH", p_sp_amount: "AMOUNT",
         /* output */
-        p_volume: "VOLUME",
+        p_volume: "VOLUME", p_gain: "GAIN",
 
         /* preset names */
         pr_custom: "CUSTOM",
@@ -76,6 +79,7 @@
         pr_rv_room: "ROOM", pr_rv_hall: "HALL", pr_rv_cave: "CAVE",
         pr_dl_slap: "SLAP", pr_dl_echo: "ECHO", pr_dl_dub: "DUB",
         pr_ch_soft: "SOFT", pr_ch_wide: "WIDE", pr_ch_wobble: "WOBBLE",
+        pr_sp_subtle: "SUBTLE", pr_sp_wide: "WIDE", pr_sp_huge: "HUGE",
 
         /* export */
         ex_format: "FORMAT",
@@ -103,6 +107,7 @@
         opt_splash: "LOADING SCREEN", opt_splash_sub: "Tape-reel spinner shown while the app loads.",
         opt_norm: "AUTO-GAIN", opt_norm_sub: "Evens out the volume between tracks.",
         opt_norm_level: "TARGET LEVEL", opt_norm_soft: "SOFT", opt_norm_normal: "NORMAL", opt_norm_loud: "LOUD",
+        opt_gain: "OUTPUT GAIN", opt_gain_sub: "Boost or cut the volume (−6 to +6 dB). A limiter prevents distortion. Double-tap the label to reset.",
         opt_restore_sub: "All effects, theme and language back to factory.",
         opt_check_update: "CHECK FOR UPDATES",
         opt_about: "DSK•LoFi — local lofi FX studio. No network, no tracking.",
@@ -133,6 +138,12 @@
 
         /* artwork modal */
         aw_open: "View artwork", aw_save: "SAVE IMAGE", aw_share: "SHARE", aw_saved: "Image saved",
+
+        /* voice removal modal */
+        vox_title: "VOICE REMOVAL", vox_presets: "QUICK PRESET",
+        vox_soft: "SOFT", vox_medium: "MEDIUM", vox_strong: "STRONG",
+        vox_intensity: "INTENSITY", vox_low: "LOW FREQ (HP)", vox_high: "HIGH FREQ (LP)",
+        vox_reset: "RESET",
 
         /* ---- library: sources / tabs / explorer / lists / track menu ---- */
         src_file: "Now playing", src_files: "Selection", src_folder: "Folder", src_list: "Playlist",
@@ -259,6 +270,7 @@
         sec_reverb: "REVERB",
         sec_delay: "DELAY",
         sec_chorus: "CHORUS",
+        sec_space: "ESPACIO",
         sec_output: "SALIDA",
         sec_export: "EXPORTAR",
         presets: "PRESETS",
@@ -270,7 +282,8 @@
         p_rv_mix: "MEZCLA", p_rv_size: "TAMAÑO", p_rv_damp: "AMORTIGUACIÓN",
         p_dl_time: "TIEMPO", p_dl_fb: "REALIMENT.", p_dl_mix: "MEZCLA",
         p_ch_rate: "VELOCIDAD", p_ch_depth: "PROFUNDIDAD", p_ch_mix: "MEZCLA",
-        p_volume: "VOLUMEN",
+        p_sp_width: "ANCHURA", p_sp_amount: "INTENSIDAD",
+        p_volume: "VOLUMEN", p_gain: "GANANCIA",
 
         pr_custom: "CUSTOM",
         pr_lofi_vinyl: "VINILO", pr_lofi_tape: "CINTA", pr_lofi_radio: "RADIO",
@@ -278,6 +291,7 @@
         pr_rv_room: "SALA", pr_rv_hall: "HALL", pr_rv_cave: "CUEVA",
         pr_dl_slap: "SLAP", pr_dl_echo: "ECO", pr_dl_dub: "DUB",
         pr_ch_soft: "SUAVE", pr_ch_wide: "AMPLIO", pr_ch_wobble: "WOBBLE",
+        pr_sp_subtle: "SUTIL", pr_sp_wide: "AMPLIO", pr_sp_huge: "ENORME",
 
         ex_format: "FORMATO",
         ex_name: "NOMBRE DE ARCHIVO",
@@ -303,6 +317,7 @@
         opt_splash: "PANTALLA DE CARGA", opt_splash_sub: "Spinner de bobina de cinta mientras carga la app.",
         opt_norm: "AUTO-GANANCIA", opt_norm_sub: "Iguala el volumen entre pistas.",
         opt_norm_level: "NIVEL OBJETIVO", opt_norm_soft: "SUAVE", opt_norm_normal: "NORMAL", opt_norm_loud: "ALTO",
+        opt_gain: "GANANCIA DE SALIDA", opt_gain_sub: "Sube o baja el volumen (−6 a +6 dB). Lleva un limitador que evita la distorsión. Doble toque en el título para restablecer.",
         opt_restore_sub: "Efectos, tema e idioma vuelven a fábrica.",
         opt_check_update: "BUSCAR ACTUALIZACIONES",
         opt_about: "DSK•LoFi — estudio de FX lofi local. Sin red, sin rastreo.",
@@ -331,6 +346,12 @@
 
         /* artwork modal */
         aw_open: "Ver carátula", aw_save: "GUARDAR IMAGEN", aw_share: "COMPARTIR", aw_saved: "Imagen guardada",
+
+        /* voice removal modal */
+        vox_title: "SUPRESIÓN DE VOZ", vox_presets: "AJUSTE RÁPIDO",
+        vox_soft: "SUAVE", vox_medium: "MEDIO", vox_strong: "FUERTE",
+        vox_intensity: "INTENSIDAD", vox_low: "FREC. GRAVE (HP)", vox_high: "FREC. AGUDA (LP)",
+        vox_reset: "RESTABLECER",
 
         /* ---- biblioteca: fuentes / pestañas / explorador / listas / menú ---- */
         src_file: "En curso", src_files: "Selección", src_folder: "Carpeta", src_list: "Lista",

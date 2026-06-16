@@ -259,6 +259,26 @@
     </div>
   </section>
 
+  <!-- ============================ SPACE (REALCE ESPACIAL) ============================ -->
+  <section class="panel fx fx--collapsed" data-sec="space">
+    <div class="fx__head">
+      <span class="fx__led"></span>
+      <h2 class="fx__title" data-i18n="sec_space">SPACE</h2>
+      <button class="fx__reset" type="button" data-i18n-aria="reset_section"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg></button>
+      <button class="switch" type="button" role="switch" aria-checked="false">
+        <span class="switch__knob"></span><span class="switch__txt">OFF</span>
+      </button>
+      <span class="fx__caret"><svg class="ic ic--caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span>
+    </div>
+    <div class="fx__body">
+      <div class="fx__presets-row">
+        <span class="fx__presets-label" data-i18n="presets">PRESETS</span>
+        <div class="fx__presets"></div>
+      </div>
+      <div class="fx__params"></div>
+    </div>
+  </section>
+
   <!-- ============================ OUTPUT ============================ -->
   <section class="panel fx" data-plain="output" hidden="hidden">
     <div class="fx__head">
@@ -336,6 +356,16 @@
         <button class="seg__item" type="button" data-val="soft" data-i18n="opt_norm_soft">SOFT</button>
         <button class="seg__item" type="button" data-val="normal" data-i18n="opt_norm_normal">NORMAL</button>
         <button class="seg__item" type="button" data-val="loud" data-i18n="opt_norm_loud">LOUD</button>
+      </div>
+    </div>
+    <div class="opt opt--col">
+      <div class="opt__sw-text">
+        <span class="param__label" data-i18n="opt_gain">OUTPUT GAIN</span>
+        <p class="opt__sub" data-i18n="opt_gain_sub"></p>
+      </div>
+      <div class="opt-gain">
+        <input class="slider" type="range" id="optGain" min="-1" max="1" step="0.01" value="0">
+        <span class="opt-gain__val" id="optGainVal">0.0 dB</span>
       </div>
     </div>
     <div class="opt opt--restore">
@@ -462,6 +492,54 @@
   </div>
 </div>
 
+
+<!-- ===================== SUPRESIÓN DE VOZ MODAL ===================== -->
+<div class="modal" id="voiceModal" aria-hidden="true" role="dialog">
+  <div class="modal__scrim" data-close="voiceModal"></div>
+  <div class="modal__card">
+    <div class="modal__head">
+      <h2 class="modal__title" data-i18n="vox_title">VOICE REMOVAL</h2>
+      <button class="icon-btn modal__x" type="button" data-close="voiceModal"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+    </div>
+
+    <div class="export__row export__row--col">
+      <span class="param__label" data-i18n="vox_presets">QUICK PRESET</span>
+      <div class="timer-opts" id="voxPresets">
+        <button class="chip" type="button" data-voxpreset="soft" data-i18n="vox_soft">SOFT</button>
+        <button class="chip" type="button" data-voxpreset="medium" data-i18n="vox_medium">MEDIUM</button>
+        <button class="chip" type="button" data-voxpreset="strong" data-i18n="vox_strong">STRONG</button>
+      </div>
+    </div>
+
+    <div class="export__row export__row--col" style="margin-top:14px">
+      <div class="speed-manual">
+        <span class="param__label" data-i18n="vox_intensity">INTENSITY</span>
+        <span class="speed-manual__val" id="voxAmountVal">100%</span>
+      </div>
+      <input class="slider" type="range" id="voxAmount" min="0" max="1" step="0.01" value="1">
+    </div>
+
+    <div class="export__row export__row--col" style="margin-top:14px">
+      <div class="speed-manual">
+        <span class="param__label" data-i18n="vox_low">LOW FREQ (HP)</span>
+        <span class="speed-manual__val" id="voxLowVal">150 Hz</span>
+      </div>
+      <input class="slider" type="range" id="voxLow" min="20" max="2000" step="10" value="150">
+    </div>
+
+    <div class="export__row export__row--col" style="margin-top:14px">
+      <div class="speed-manual">
+        <span class="param__label" data-i18n="vox_high">HIGH FREQ (LP)</span>
+        <span class="speed-manual__val" id="voxHighVal">7000 Hz</span>
+      </div>
+      <input class="slider" type="range" id="voxHigh" min="2000" max="16000" step="100" value="7000">
+    </div>
+
+    <div class="export__row export__row--col" style="margin-top:16px">
+      <button class="btn btn--ghost btn--block" id="voxReset" type="button" data-i18n="vox_reset">RESET</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal" id="gpModal" aria-hidden="true" role="dialog">
   <div class="modal__scrim"></div>

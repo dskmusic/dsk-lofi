@@ -47,12 +47,21 @@
     sub.connect(merge, 0, 1);
     merge.connect(output);
 
+    let curAmount = 0;
     function setAmount(a) {
-      a = Math.max(0, Math.min(1, a));
-      sub.gain.setTargetAtTime(-a, ctx.currentTime, 0.02);
+      curAmount = Math.max(0, Math.min(1, a));
+      sub.gain.setTargetAtTime(-curAmount, ctx.currentTime, 0.02);
+    }
+    function setLowHz(hz) {
+      const f = Math.max(20, Math.min(2000, hz || 150));
+      hp.frequency.setTargetAtTime(f, ctx.currentTime, 0.02);
+    }
+    function setHighHz(hz) {
+      const f = Math.max(2000, Math.min(16000, hz || 7000));
+      lp.frequency.setTargetAtTime(f, ctx.currentTime, 0.02);
     }
     setAmount(0);
-    return { input, output, setAmount };
+    return { input, output, setAmount, setLowHz, setHighHz };
   }
 
   /* ---------------- defaults (normalized 0..1 unless noted) -------------- */
@@ -61,7 +70,8 @@
     reverb: { on: true,  mix: 0.22, size: 0.45, damp: 0.55 },
     delay:  { on: false, time: 0.30, fb: 0.35, mix: 0.25 },
     chorus: { on: false, rate: 0.25, depth: 0.40, mix: 0.40 },
-    output: { volume: 1.0 }
+    space:  { on: false, width: 0.50, amount: 0.50 },   // realce espacial (estéreo M/S)
+    output: { volume: 1.0, gain: 0.0 }                  // gain: -1..+1 → -6..+6 dB (0 = sin cambio)
   };
 
   const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -78,7 +88,11 @@
     dlTime:   (v) => 0.06 + v * 0.84,
     dlFb:     (v) => Math.min(v * 0.85, 0.9),
     chRateHz: (v) => 0.15 + v * 4.0,
-    chDepth:  (v) => v * 0.0045
+    chDepth:  (v) => v * 0.0045,
+    // realce espacial: width 0..1 → factor del lado (Side) 1..2.2; amount escala la mezcla
+    spaceSide: (width, amount) => 1 + width * 1.2 * (0.4 + amount * 0.6),
+    // ganancia: -1..+1 → -6..+6 dB → factor lineal
+    gainLin:  (v) => Math.pow(10, (Math.max(-1, Math.min(1, v)) * 6) / 20)
   };
 
   function makeIR(ctx, seconds, sampleRate) {
@@ -174,7 +188,44 @@
     rv.out.connect(procMon).connect(volume);
     input.connect(dryMon).connect(volume);
 
-    const chain = { ctx, input, volume, procMon, dryMon, lf, ch, dl, rv, workletOK };
+    /* ---------------- SPACE (realce espacial M/S) + GAIN + LIMITER ----------------
+       Widener Mid/Side: separa canales, calcula Mid=(L+R)/2 y Side=(L-R)/2,
+       amplifica el Side (sensación de anchura) y re-mezcla. dryW/wetW permiten
+       desactivarlo (passthrough) sin reconstruir la cadena.
+       Después: ganancia (-6..+6 dB) y un compresor como limitador suave para que
+       subir la ganancia NO distorsione (techo en ~ -1 dBFS).                       */
+    const sp = { dryW: g(1), wetW: g(0) };
+    const spSplit = ctx.createChannelSplitter(2);
+    const spMerge = ctx.createChannelMerger(2);
+    // Mid = (L+R)/2 ; Side = (L-R)/2
+    const midL = g(0.5), midR = g(0.5);          // suma → Mid
+    const sideL = g(0.5), sideR = g(-0.5);       // resta → Side
+    const sideGain = g(1);                       // amplificación del Side (anchura)
+    // reconstrucción: L = Mid + Side·k ; R = Mid - Side·k
+    const recMidL = g(1), recMidR = g(1);
+    const recSideL = g(1), recSideR = g(-1);
+
+    volume.connect(sp.dryW);                     // rama seca (passthrough)
+    volume.connect(spSplit);                     // rama widener
+    spSplit.connect(midL, 0); spSplit.connect(midR, 1);
+    spSplit.connect(sideL, 0); spSplit.connect(sideR, 1);
+    const midSum = g(1); midL.connect(midSum); midR.connect(midSum);
+    const sideSum = g(1); sideL.connect(sideSum); sideR.connect(sideSum);
+    sideSum.connect(sideGain);
+    // L
+    midSum.connect(recMidL).connect(spMerge, 0, 0);
+    sideGain.connect(recSideL).connect(spMerge, 0, 0);
+    // R
+    midSum.connect(recMidR).connect(spMerge, 0, 1);
+    sideGain.connect(recSideR).connect(spMerge, 0, 1);
+    spMerge.connect(sp.wetW);
+
+    const chain = { ctx, input, volume, procMon, dryMon, lf, ch, dl, rv, sp, sideGain, workletOK };
+    // salida de la cadena de efectos: suma de la rama seca + widener
+    const fxOut = g(1);
+    sp.dryW.connect(fxOut);
+    sp.wetW.connect(fxOut);
+    chain.out = fxOut;
     chain._playGate = false;  // hiss/crackle gate (false hasta que se reproduzca)
 
     /* ------- param application (live: smoothed / offline: immediate) ----- */
@@ -215,7 +266,13 @@
       set(rv.wet.gain, p.reverb.on ? p.reverb.mix * 1.35 : 0);
       set(rv.damp.frequency, map.rvDampHz(p.reverb.damp));
 
-      /* output */
+      /* space (realce espacial M/S) */
+      const sOn = p.space && p.space.on;
+      set(sp.wetW.gain, sOn ? 1 : 0);
+      set(sp.dryW.gain, sOn ? 0 : 1);
+      if (sOn) set(sideGain.gain, map.spaceSide(p.space.width, p.space.amount));
+
+      /* output: volumen (A/B) */
       set(volume.gain, p.output.volume);
     };
 
@@ -275,6 +332,12 @@
     tapeLive: false,
     speed: 1.0,
 
+    // ---- supresión de voz (karaoke) ----
+    karaokeOn: false,
+    karaokeAmount: 1.0,    // 0..1 intensidad de cancelación dentro de la banda
+    karaokeLow: 150,       // Hz límite inferior de la banda vocal (HP)
+    karaokeHigh: 7000,     // Hz límite superior de la banda vocal (LP)
+
     // ---- auto-ganancia / normalización por pista ----
     normGain: null,
     normEnabled: false,
@@ -316,13 +379,35 @@
       this.fadeGain = this.ctx.createGain();
       this.fadeGain.gain.value = 1;
       this.karaoke.output.connect(this.fadeGain);
-      this.fadeGain.connect(this.ctx.destination);
-      this.karaoke.setAmount(this.karaokeOn ? KARAOKE_AMOUNT : 0);
-      this.chain.volume.connect(this.analyser).connect(this.normGain);
+      // ---- ganancia de salida MAESTRA (-6..+6 dB) + limitador ----
+      // Va al final de TODO, así afecta tanto al modo LoFi como al nativo (YouTube).
+      this.outGain = this.ctx.createGain();
+      this.outGain.gain.value = map.gainLin(this.params.output.gain || 0);
+      this.outLimiter = this.ctx.createDynamicsCompressor();
+      this.outLimiter.threshold.value = -1.0;
+      this.outLimiter.knee.value = 0;
+      this.outLimiter.ratio.value = 20;
+      this.outLimiter.attack.value = 0.003;
+      this.outLimiter.release.value = 0.10;
+      this.fadeGain.connect(this.outGain);
+      this.outGain.connect(this.outLimiter);
+      this.outLimiter.connect(this.ctx.destination);
+      this.karaoke.setLowHz(this.karaokeLow);
+      this.karaoke.setHighHz(this.karaokeHigh);
+      this.karaoke.setAmount(this.karaokeOn ? this.karaokeAmount : 0);
+      this.chain.out.connect(this.analyser).connect(this.normGain);
       this.chain.setIR(this.params.reverb.size);
       this.chain.apply(this.params, true);
       this._rampNorm();
       this._startKeepAlive();
+    },
+
+    // Ajusta la ganancia de salida maestra (-1..+1 → -6..+6 dB). Afecta a ambos modos.
+    setOutGain(v) {
+      this.params.output.gain = Math.max(-1, Math.min(1, v));
+      if (this.outGain && this.ctx) {
+        this.outGain.gain.setTargetAtTime(map.gainLin(this.params.output.gain), this.ctx.currentTime, 0.03);
+      }
     },
 
     async resume() {
@@ -335,9 +420,23 @@
     // Karaoke: atenúa la voz (canal central). best-effort; mejor en estéreo.
     setKaraoke(on) {
       this.karaokeOn = !!on;
-      if (this.karaoke) this.karaoke.setAmount(this.karaokeOn ? KARAOKE_AMOUNT : 0);
+      if (this.karaoke) this.karaoke.setAmount(this.karaokeOn ? this.karaokeAmount : 0);
       try { document.dispatchEvent(new CustomEvent("dsk:karaoke", { detail: this.karaokeOn })); } catch (e) {}
       return this.karaokeOn;
+    },
+
+    // Ajusta parámetros de la supresión de voz. p: { amount, low, high } (parciales OK)
+    setKaraokeParams(p) {
+      p = p || {};
+      if (typeof p.amount === "number") this.karaokeAmount = Math.max(0, Math.min(1, p.amount));
+      if (typeof p.low === "number")    this.karaokeLow  = Math.max(20, Math.min(2000, p.low));
+      if (typeof p.high === "number")   this.karaokeHigh = Math.max(2000, Math.min(16000, p.high));
+      if (this.karaoke) {
+        this.karaoke.setLowHz(this.karaokeLow);
+        this.karaoke.setHighHz(this.karaokeHigh);
+        if (this.karaokeOn) this.karaoke.setAmount(this.karaokeAmount);
+      }
+      try { document.dispatchEvent(new CustomEvent("dsk:karaokeparams", { detail: { amount: this.karaokeAmount, low: this.karaokeLow, high: this.karaokeHigh } })); } catch (e) {}
     },
 
     // keep-alive: señal inaudible real conectada DIRECTAMENTE a destination
@@ -796,7 +895,15 @@
       chain.apply(p, true);
       chain.dryMon.gain.value = 0;
       chain.procMon.gain.value = 1;
-      chain.volume.connect(oc.destination);
+      // ganancia de salida + limitador (igual que en reproducción)
+      const exGain = oc.createGain();
+      exGain.gain.value = map.gainLin(p.output.gain || 0);
+      const exLim = oc.createDynamicsCompressor();
+      exLim.threshold.value = -1.0; exLim.knee.value = 0; exLim.ratio.value = 20;
+      exLim.attack.value = 0.003; exLim.release.value = 0.10;
+      chain.out.connect(exGain);
+      exGain.connect(exLim);
+      exLim.connect(oc.destination);
 
       const src = oc.createBufferSource();
       src.buffer = srcBuffer;

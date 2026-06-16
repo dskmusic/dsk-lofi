@@ -48,19 +48,27 @@
       '<h4>Reproducción</h4>' +
       '<p>Play/pausa, anterior/siguiente, <b>aleatorio</b> y velocidad. Toca el título de la lista para abrir la vista a pantalla completa.</p>' +
       '<h4>Lista, Archivos y Listas</h4>' +
-      '<p>En esa vista hay tres pestañas: <b>En curso</b> (la cola actual), <b>Archivos</b> (explorador de carpetas) y <b>Listas</b> (crea y edita tus listas). El botón <b>⋮</b> de cada pista permite reproducir ahora, en siguiente, al final o añadir a una lista.</p>' +
+      '<p>En esa vista hay tres pestañas: <b>En curso</b> (la cola actual), <b>Archivos</b> (explorador de carpetas) y <b>Listas</b> (crea y edita tus listas). El botón <b>⋮</b> de cada pista permite reproducir ahora, en siguiente, al final o añadir a una lista. La app <b>recuerda</b> la última pestaña, carpeta o lista que tenías abierta.</p>' +
+      '<h4>Añadir todo y selección múltiple</h4>' +
+      '<p>Dentro de una carpeta, el botón <b>añadir todo</b> mete todas sus pistas en una lista de una vez. El botón <b>seleccionar</b> (✓) activa la selección múltiple en Archivos y en el detalle de una lista: marca varias pistas y usa la barra inferior para reproducir <b>siguiente</b>, <b>al final</b>, <b>añadir a lista</b> o <b>eliminar</b> (en listas).</p>' +
+      '<h4>Carpetas y permisos</h4>' +
+      '<p>Si al importar la configuración una carpeta queda <b>sin permiso</b>, aparece marcada en Archivos: tócala para volver a vincularla sin perder tus listas.</p>' +
       '<h4>Efectos LoFi</h4>' +
-      '<p>Motor lofi, reverb, delay y chorus, cada uno con presets. Doble toque en el nombre de un control lo restablece. Usa <b>Presets</b> para guardar tus combinaciones.</p>' +
+      '<p>Motor lofi, reverb, delay, chorus y <b>realce espacial</b> (anchura estéreo), cada uno con presets y activable de forma independiente. Doble toque en el nombre de un control lo restablece. Usa <b>Presets</b> para guardar tus combinaciones.</p>' +
+      '<h4>Realce espacial y ganancia</h4>' +
+      '<p>El efecto <b>Espacio</b> ensancha la imagen estéreo (parámetros <i>Anchura</i> e <i>Intensidad</i>); está desactivado por defecto. En <b>Opciones</b> tienes un control de <b>Ganancia de salida</b> (de −6 a +6 dB, centro 0 = sin cambio) para subir o bajar un poco el volumen; lleva un limitador que evita la distorsión al subirla.</p>' +
       '<h4>Visualizador</h4>' +
       '<p>Pulsa el ojo para elegir entre varios visualizadores y activar la <b>carátula de fondo</b> difuminada.</p>' +
+      '<h4>Carátula a pantalla completa</h4>' +
+      '<p>El icono de <b>imagen</b> (abajo a la izquierda del visualizador) abre la carátula a pantalla completa —la del archivo (ID3) o la miniatura de YouTube— con opciones de <b>guardar</b> en el dispositivo y <b>compartir</b>.</p>' +
       '<h4>Letras</h4>' +
       '<p>Pulsa <b>LETRA</b> (arriba a la izquierda del visualizador) para buscar la letra de la canción. Elige la fuente entre <b>LRCLIB</b>, <b>Genius</b> y <b>NetEase</b>. Si hay versión sincronizada, cambia entre <b>PLANA</b> y <b>SINCRO</b> (resaltado al ritmo). Desde el modal puedes <b>compartir</b> (toda la letra o una selección) y guardar en <b>PDF</b>. Tocar el título entre las bobinas lo copia al portapapeles.</p>' +
       '<h4>Online (YouTube)</h4>' +
-      '<p>En la pestaña <b>Online</b> de la biblioteca puedes buscar música en YouTube y reproducir <b>solo el audio</b>, además de añadirla a tus listas. Las listas guardan la canción y se vuelve a obtener al reproducir.</p>' +
-      '<h4>Anular voz (karaoke)</h4>' +
-      '<p>En el modo reproductor aparece un botón de <b>micrófono</b> (también dentro del modal de letras) que atenúa la voz centrada de la canción. Es aproximado: funciona mejor en pistas en estéreo.</p>' +
+      '<p>En la pestaña <b>Online</b> puedes buscar música en YouTube y reproducir <b>solo el audio</b>, añadirla a tus listas o descargarla. El buscador es inteligente: si pegas un <b>enlace de YouTube</b> (youtu.be, youtube.com, Shorts…) abre directamente ese vídeo como resultado. Las descargas guardan también la <b>carátula</b> (miniatura del vídeo).</p>' +
+      '<h4>Supresión de voz (karaoke)</h4>' +
+      '<p>En el modo reproductor aparece un botón de <b>micrófono</b> que atenúa la voz centrada de la canción. Un <b>toque</b> la activa/desactiva; <b>mantén pulsado</b> para abrir los ajustes: <b>intensidad</b>, rango de <b>frecuencias</b> (grave/agudo de la voz) y presets rápidos (suave/medio/fuerte). Es aproximado: funciona mejor en pistas en estéreo.</p>' +
       '<h4>Exportar</h4>' +
-      '<p>Renderiza la pista con los efectos aplicados a WAV o MP3. En la app se guarda en la carpeta <b>/DSKlofi</b>.</p>' +
+      '<p>Renderiza la pista con los efectos aplicados a WAV o MP3. El MP3 incluye la <b>carátula</b> (la del archivo original o la miniatura de YouTube) y el título/artista. En la app se guarda en la carpeta <b>/DSKlofi</b>.</p>' +
       '<h4>Identificar canción</h4>' +
       '<p>Pulsa el icono de <b>micrófono</b> (abajo a la derecha del visualizador) para identificar la canción que esté sonando alrededor, tipo Shazam. Escucha 6 segundos y muestra carátula, título y artista. Desde el resultado puedes <b>buscar online</b> esa canción o <b>compartirla</b>. Necesitas configurar un token gratuito de <b>AudD.io</b> en Opciones.</p>' +
       '<h4>Más</h4>' +
@@ -71,19 +79,27 @@
       '<h4>Playback</h4>' +
       '<p>Play/pause, previous/next, <b>shuffle</b> and speed. Tap the playlist title to open the full-screen view.</p>' +
       '<h4>Queue, Files and Playlists</h4>' +
-      '<p>That view has three tabs: <b>Queue</b> (current list), <b>Files</b> (folder browser) and <b>Playlists</b> (create and edit your lists). Each track\'s <b>⋮</b> button lets you play now, play next, add to end or add to a playlist.</p>' +
+      '<p>That view has three tabs: <b>Queue</b> (current list), <b>Files</b> (folder browser) and <b>Playlists</b> (create and edit your lists). Each track\'s <b>⋮</b> button lets you play now, play next, add to end or add to a playlist. The app <b>remembers</b> the last tab, folder or playlist you had open.</p>' +
+      '<h4>Add all and multi-select</h4>' +
+      '<p>Inside a folder, the <b>add all</b> button drops every track into a playlist at once. The <b>select</b> (✓) button turns on multi-select in Files and inside a playlist: tick several tracks and use the bottom bar to play <b>next</b>, <b>at the end</b>, <b>add to playlist</b> or <b>remove</b> (in playlists).</p>' +
+      '<h4>Folders and permissions</h4>' +
+      '<p>If a folder ends up <b>without permission</b> after importing settings, it shows up flagged in Files: tap it to relink it without losing your playlists.</p>' +
       '<h4>LoFi effects</h4>' +
-      '<p>LoFi engine, reverb, delay and chorus, each with presets. Double-tap a control name to reset it. Use <b>Presets</b> to save your combinations.</p>' +
+      '<p>LoFi engine, reverb, delay, chorus and <b>spatial enhance</b> (stereo width), each with presets and independently switchable. Double-tap a control name to reset it. Use <b>Presets</b> to save your combinations.</p>' +
+      '<h4>Spatial enhance and gain</h4>' +
+      '<p>The <b>Space</b> effect widens the stereo image (<i>Width</i> and <i>Amount</i> params); it\'s off by default. In <b>Options</b> there\'s an <b>Output gain</b> control (−6 to +6 dB, center 0 = no change) to nudge the volume up or down; a limiter keeps it from distorting when boosted.</p>' +
       '<h4>Visualizer</h4>' +
       '<p>Tap the eye to pick a visualizer and turn on the blurred <b>cover backdrop</b>.</p>' +
+      '<h4>Full-screen artwork</h4>' +
+      '<p>The <b>image</b> icon (bottom-left of the visualizer) opens the cover full-screen —the file\'s (ID3) or the YouTube thumbnail— with options to <b>save</b> to the device and <b>share</b>.</p>' +
       '<h4>Lyrics</h4>' +
       '<p>Tap <b>LYRIC</b> (top-left of the visualizer) to search a song\'s lyrics. Pick the source between <b>LRCLIB</b>, <b>Genius</b> and <b>NetEase</b>. When a synced version exists, switch between <b>PLAIN</b> and <b>SYNCED</b> (highlighted to the beat). From the modal you can <b>share</b> (the whole lyrics or a selection) and save a <b>PDF</b>. Tapping the title between the reels copies it to the clipboard.</p>' +
       '<h4>Online (YouTube)</h4>' +
-      '<p>In the library\'s <b>Online</b> tab you can search YouTube and play <b>audio only</b>, and add tracks to your lists. Lists store the song and re-fetch it on play.</p>' +
+      '<p>In the <b>Online</b> tab you can search YouTube and play <b>audio only</b>, add tracks to your lists or download them. The search box is smart: paste a <b>YouTube link</b> (youtu.be, youtube.com, Shorts…) and it opens that video directly as a result. Downloads also embed the <b>cover art</b> (video thumbnail).</p>' +
       '<h4>Vocal removal (karaoke)</h4>' +
-      '<p>In player-only mode a <b>microphone</b> button appears (also inside the lyrics modal) that attenuates the song\'s centered vocal. It\'s approximate and works best on stereo tracks.</p>' +
+      '<p>In player-only mode a <b>microphone</b> button appears that attenuates the song\'s centered vocal. A <b>tap</b> toggles it; <b>press and hold</b> to open the settings: <b>intensity</b>, vocal <b>frequency</b> range (low/high) and quick presets (soft/medium/strong). It\'s approximate and works best on stereo tracks.</p>' +
       '<h4>Export</h4>' +
-      '<p>Render the track with the applied effects to WAV or MP3. In the app it is saved to the <b>/DSKlofi</b> folder.</p>' +
+      '<p>Render the track with the applied effects to WAV or MP3. The MP3 embeds the <b>cover art</b> (from the original file or the YouTube thumbnail) plus title/artist. In the app it is saved to the <b>/DSKlofi</b> folder.</p>' +
       '<h4>Identify song</h4>' +
       '<p>Tap the <b>microphone</b> icon (bottom-right of the visualizer) to identify whatever song is playing nearby, Shazam-style. It listens for 6 seconds and shows the cover art, title and artist. From the result you can <b>search online</b> for that song or <b>share</b> it. You\'ll need to set a free <b>AudD.io</b> token in Options.</p>' +
       '<h4>More</h4>' +
@@ -475,7 +491,7 @@
       (r.pending ? '<span class="lib-row__sub lib-row__sub--pending">' + T("ex_pending") + '</span>' : '') +
       '<button class="lib-row__act" type="button" aria-label="' + T("ex_remove_root") + '">&times;</button>';
     const nameEl = row.querySelector(".lib-row__name");
-    nameEl.textContent = trimRootName(r.name);
+    nameEl.textContent = r.name;
     nameEl.title = r.pending ? (r.name + " — " + T("ex_pending_hint")) : r.name;
     if (r.pending) {
       row.title = T("ex_pending_hint");

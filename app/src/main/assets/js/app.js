@@ -52,6 +52,7 @@
     secs: (v) => (0.5 + v * 4.5).toFixed(1) + " s",
     ms: (v) => Math.round((0.06 + v * 0.84) * 1000) + " ms",
     lfoHz: (v) => (0.15 + v * 4.0).toFixed(2) + " Hz",
+    db: (v) => { const d = (v || 0) * 6; return (d > 0 ? "+" : "") + d.toFixed(1) + " dB"; },
     time: (s) => {
       s = Math.max(0, s || 0);
       const m = Math.floor(s / 60), ss = Math.floor(s % 60);
@@ -111,6 +112,17 @@
         { id: "soft",   labelKey: "pr_ch_soft",   values: { rate: 0.20, depth: 0.30, mix: 0.30 } },
         { id: "wide",   labelKey: "pr_ch_wide",   values: { rate: 0.30, depth: 0.55, mix: 0.55 } },
         { id: "wobble", labelKey: "pr_ch_wobble", values: { rate: 0.60, depth: 0.75, mix: 0.50 } }
+      ]
+    },
+    space: {
+      params: [
+        { key: "width",  labelKey: "p_sp_width",  format: fmt.pct },
+        { key: "amount", labelKey: "p_sp_amount", format: fmt.pct }
+      ],
+      presets: [
+        { id: "subtle", labelKey: "pr_sp_subtle", values: { width: 0.35, amount: 0.35 } },
+        { id: "wide",   labelKey: "pr_sp_wide",   values: { width: 0.60, amount: 0.55 } },
+        { id: "huge",   labelKey: "pr_sp_huge",   values: { width: 0.90, amount: 0.80 } }
       ]
     }
   };
@@ -1529,17 +1541,38 @@
     applySpeedLabel();
     $("#btnSpeed").addEventListener("click", () => { syncSpeedModal(); UI.openModal("speedModal"); });
 
-    /* botón anular voz (karaoke), solo visible en modo reproductor */
+    /* botón anular voz (karaoke), solo visible en modo reproductor.
+       Toque = activar/desactivar. Mantener pulsado = abrir modal de ajustes. */
     function syncVoiceBtn() {
       const b = $("#btnVoice");
       if (b) b.classList.toggle("is-on", !!(window.Engine && Engine.karaokeOn));
     }
     const btnVoice = $("#btnVoice");
-    if (btnVoice) btnVoice.addEventListener("click", () => {
-      try { if (window.Engine && Engine.setKaraoke) Engine.setKaraoke(!Engine.karaokeOn); } catch (e) {}
-    });
+    if (btnVoice) {
+      let voxLongPress = false, voxTimer = null;
+      const LONG_MS = 500;
+      const startPress = () => {
+        voxLongPress = false;
+        voxTimer = setTimeout(() => { voxLongPress = true; openVoiceModal(); }, LONG_MS);
+      };
+      const endPress = () => {
+        if (voxTimer) { clearTimeout(voxTimer); voxTimer = null; }
+      };
+      // pointer cubre touch y ratón
+      btnVoice.addEventListener("pointerdown", startPress);
+      btnVoice.addEventListener("pointerup", endPress);
+      btnVoice.addEventListener("pointerleave", endPress);
+      btnVoice.addEventListener("pointercancel", endPress);
+      btnVoice.addEventListener("click", (e) => {
+        if (voxLongPress) { voxLongPress = false; e.preventDefault(); return; }  // fue long-press → no togglear
+        try { if (window.Engine && Engine.setKaraoke) Engine.setKaraoke(!Engine.karaokeOn); } catch (e) {}
+      });
+      // evitar menú contextual del navegador al mantener pulsado
+      btnVoice.addEventListener("contextmenu", (e) => e.preventDefault());
+    }
     document.addEventListener("dsk:karaoke", syncVoiceBtn);
     syncVoiceBtn();
+    initVoiceModal();
     $$("#speedPresets .chip").forEach((c) => {
       c.addEventListener("click", () => setSpeedVal(parseFloat(c.getAttribute("data-spd"))));
     });
@@ -2737,6 +2770,41 @@
     syncNormUI();
     Engine.setNorm(normEnabled, normLevel);
 
+    /* ---- ganancia de salida (-6..+6 dB, persistente) ---- */
+    const optGain = $("#optGain"), optGainVal = $("#optGainVal");
+    const fmtDb = (v) => { const d = (v || 0) * 6; return (d > 0 ? "+" : "") + d.toFixed(1) + " dB"; };
+    let outGainVal = 0;
+    try { const s = localStorage.getItem("dsklofi.outgain"); if (s !== null) outGainVal = parseFloat(s) || 0; } catch (e) {}
+    outGainVal = Math.max(-1, Math.min(1, outGainVal));
+    Engine.params.output.gain = outGainVal;
+    try { Engine.setOutGain(outGainVal); } catch (e) {}
+    if (optGain) {
+      optGain.value = outGainVal;
+      if (optGainVal) optGainVal.textContent = fmtDb(outGainVal);
+      optGain.addEventListener("input", () => {
+        outGainVal = parseFloat(optGain.value) || 0;
+        if (optGainVal) optGainVal.textContent = fmtDb(outGainVal);
+        try { Engine.setOutGain(outGainVal); } catch (e) {}
+        try { localStorage.setItem("dsklofi.outgain", String(outGainVal)); } catch (e) {}
+      });
+      // doble toque en la etiqueta → reset a 0 dB
+      const gainRow = optGain.closest(".opt");
+      const lbl = gainRow ? gainRow.querySelector(".param__label") : null;
+      if (lbl) {
+        let lastTap = 0;
+        lbl.addEventListener("click", () => {
+          const now = Date.now();
+          if (now - lastTap < 350) {
+            outGainVal = 0; optGain.value = 0;
+            if (optGainVal) optGainVal.textContent = fmtDb(0);
+            try { Engine.setOutGain(0); } catch (e) {}
+            try { localStorage.setItem("dsklofi.outgain", "0"); } catch (e) {}
+          }
+          lastTap = now;
+        });
+      }
+    }
+
     /* ---- modo solo reproductor (audio nativo, instantáneo, sin FX) ---- */
     Engine.setNativeMode(false, nativeAudio);   // registra el <audio> para el visualizador
     const swPlayer = $("#swPlayerOnly");
@@ -2860,10 +2928,13 @@
       localStorage.removeItem("dsklofi.splash");
       localStorage.removeItem("dsklofi.norm");
       localStorage.removeItem("dsklofi.normlevel");
+      localStorage.removeItem("dsklofi.outgain");
       { const sn = $("#swNorm"); if (sn) sn.setAttribute("aria-checked", "true"); }
       { const nr = $("#normLevelRow"); if (nr) nr.style.display = ""; }
       { const ns = $("#normSeg"); if (ns) UI.$$(".seg__item", ns).forEach((b) => b.classList.toggle("seg__item--active", b.getAttribute("data-val") === "normal")); }
       try { Engine.setNorm(true, "normal"); } catch (e) {}
+      try { Engine.setOutGain(0); } catch (e) {}
+      { const og = $("#optGain"); if (og) og.value = 0; const ogv = $("#optGainVal"); if (ogv) ogv.textContent = "0.0 dB"; }
       { const ss = $("#swSplash"); if (ss) ss.setAttribute("aria-checked", "true"); }
       setTheme("dark", false);
       I18n.set(I18n.detect(), false);
@@ -3168,6 +3239,87 @@
 
     // ocultar opciones no disponibles en entorno sin bridge
     // (en browser puro el <a download> y Web Share API cubren el caso)
+  }
+
+  /* ---- modal de supresión de voz ---- */
+  const VOX_LS = "dsklofi.voxparams";
+  const VOX_DEFAULTS = { amount: 1.0, low: 150, high: 7000 };
+  const VOX_PRESETS = {
+    soft:   { amount: 0.6, low: 220, high: 5000 },
+    medium: { amount: 0.85, low: 150, high: 7000 },
+    strong: { amount: 1.0, low: 100, high: 9000 }
+  };
+
+  function loadVoxParams() {
+    try { return Object.assign({}, VOX_DEFAULTS, JSON.parse(localStorage.getItem(VOX_LS)) || {}); }
+    catch (e) { return Object.assign({}, VOX_DEFAULTS); }
+  }
+  function saveVoxParams(p) { try { localStorage.setItem(VOX_LS, JSON.stringify(p)); } catch (e) {} }
+
+  function openVoiceModal() {
+    // al abrir por long-press, activar la supresión si estaba apagada
+    try { if (window.Engine && !Engine.karaokeOn && Engine.setKaraoke) Engine.setKaraoke(true); } catch (e) {}
+    syncVoxModalUI();
+    UI.openModal("voiceModal");
+  }
+
+  function syncVoxModalUI() {
+    const a = $("#voxAmount"), lo = $("#voxLow"), hi = $("#voxHigh");
+    if (!a) return;
+    const p = {
+      amount: window.Engine ? Engine.karaokeAmount : VOX_DEFAULTS.amount,
+      low:    window.Engine ? Engine.karaokeLow  : VOX_DEFAULTS.low,
+      high:   window.Engine ? Engine.karaokeHigh : VOX_DEFAULTS.high
+    };
+    a.value = p.amount; lo.value = p.low; hi.value = p.high;
+    $("#voxAmountVal").textContent = Math.round(p.amount * 100) + "%";
+    $("#voxLowVal").textContent = Math.round(p.low) + " Hz";
+    $("#voxHighVal").textContent = Math.round(p.high) + " Hz";
+    // marcar el preset activo si coincide
+    $$("#voxPresets .chip").forEach((c) => {
+      const pr = VOX_PRESETS[c.getAttribute("data-voxpreset")];
+      const match = pr && Math.abs(pr.amount - p.amount) < 0.001 && pr.low === p.low && pr.high === p.high;
+      c.classList.toggle("chip--active", !!match);
+    });
+  }
+
+  function applyVoxParams(p, persist) {
+    if (window.Engine && Engine.setKaraokeParams) Engine.setKaraokeParams(p);
+    if (persist !== false) {
+      saveVoxParams({
+        amount: window.Engine ? Engine.karaokeAmount : p.amount,
+        low:    window.Engine ? Engine.karaokeLow  : p.low,
+        high:   window.Engine ? Engine.karaokeHigh : p.high
+      });
+    }
+    syncVoxModalUI();
+  }
+
+  function initVoiceModal() {
+    const a = $("#voxAmount"), lo = $("#voxLow"), hi = $("#voxHigh");
+    if (!a) return;
+    // restaurar parámetros guardados al iniciar
+    const saved = loadVoxParams();
+    if (window.Engine && Engine.setKaraokeParams) Engine.setKaraokeParams(saved);
+
+    a.addEventListener("input", () => {
+      $("#voxAmountVal").textContent = Math.round(parseFloat(a.value) * 100) + "%";
+      applyVoxParams({ amount: parseFloat(a.value) });
+    });
+    lo.addEventListener("input", () => {
+      $("#voxLowVal").textContent = Math.round(parseFloat(lo.value)) + " Hz";
+      applyVoxParams({ low: parseFloat(lo.value) });
+    });
+    hi.addEventListener("input", () => {
+      $("#voxHighVal").textContent = Math.round(parseFloat(hi.value)) + " Hz";
+      applyVoxParams({ high: parseFloat(hi.value) });
+    });
+    $$("#voxPresets .chip").forEach((c) => c.addEventListener("click", () => {
+      const pr = VOX_PRESETS[c.getAttribute("data-voxpreset")];
+      if (pr) applyVoxParams(Object.assign({}, pr));
+    }));
+    const reset = $("#voxReset");
+    if (reset) reset.addEventListener("click", () => applyVoxParams(Object.assign({}, VOX_DEFAULTS)));
   }
 
   /* ---- reconocimiento de canciones via AudD.io ---- */

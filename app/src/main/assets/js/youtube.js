@@ -261,9 +261,53 @@
     if (window.UI) UI.toast(t("on_queued"));
   }
 
+  // Detecta y extrae el ID de vídeo de una URL de YouTube en sus formas comunes:
+  //   youtu.be/ID, youtube.com/watch?v=ID, /shorts/ID, /embed/ID, /v/ID, /live/ID
+  //   con cualquier parámetro extra (?si=, &t=, &list=…) y dominios .com/.es/… o music.
+  // Devuelve el ID (11 chars) o null si no es una URL de YouTube reconocible.
+  function parseYouTubeId(str) {
+    const s = (str || "").trim();
+    if (!s) return null;
+    // ¿parece una URL/dominio de youtube? (evita tratar texto normal como enlace)
+    if (!/(?:youtu\.be|youtube\.com|youtube-nocookie\.com|music\.youtube\.[a-z.]+|youtube\.[a-z.]+)/i.test(s)) return null;
+    const ID = /^[A-Za-z0-9_-]{11}$/;
+    let m;
+    // youtu.be/ID
+    m = s.match(/youtu\.be\/([A-Za-z0-9_-]{11})/);          if (m && ID.test(m[1])) return m[1];
+    // watch?v=ID
+    m = s.match(/[?&]v=([A-Za-z0-9_-]{11})/);                if (m && ID.test(m[1])) return m[1];
+    // /shorts/ID , /embed/ID , /v/ID , /live/ID
+    m = s.match(/\/(?:shorts|embed|v|live)\/([A-Za-z0-9_-]{11})/); if (m && ID.test(m[1])) return m[1];
+    return null;
+  }
+
+  // Resuelve una URL de YouTube → muestra ESE único vídeo como resultado.
+  async function openByUrl(videoId) {
+    state(t("on_searching"));
+    try {
+      const info = await DSKYT.resolve(videoId);
+      if (!info) { results = []; state(t("on_notfound")); return; }
+      results = [{
+        videoId: videoId,
+        title: info.title || videoId,
+        uploader: info.uploader || "",
+        duration: info.duration || 0,
+        thumb: info.thumb || ("https://i.ytimg.com/vi/" + videoId + "/hqdefault.jpg")
+      }];
+      render();
+    } catch (code) {
+      results = [];
+      if (code === "browser") state(t("on_browser"));
+      else state(t("on_error"));
+    }
+  }
+
   async function run(query) {
     query = (query || "").trim();
     if (!query) return;
+    // ¿es una URL de YouTube? → abrir ese vídeo como resultado único
+    const vid = parseYouTubeId(query);
+    if (vid) { openByUrl(vid); return; }
     state(t("on_searching"));
     try {
       results = await DSKYT.search(query);

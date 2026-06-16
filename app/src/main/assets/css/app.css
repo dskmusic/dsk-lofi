@@ -1480,6 +1480,10 @@
     /* ===================== switch (toggle) ===================== */
     .opt--switch { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
     .opt__sw-text { flex: 1; min-width: 0; }
+    .opt--col { display: flex; flex-direction: column; gap: var(--space-2); }
+    .opt-gain { display: flex; align-items: center; gap: var(--space-3); }
+    .opt-gain .slider { flex: 1; min-width: 0; }
+    .opt-gain__val { flex: none; min-width: 64px; text-align: right; font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--acc); }
     .switch {
       position: relative; flex-shrink: 0;
       width: 46px; height: 27px;
