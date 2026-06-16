@@ -42,13 +42,8 @@ set PULLERR=!errorlevel!
 if !PULLERR! NEQ 0 (
     echo.
     echo AVISO: git pull --rebase devolvio codigo !PULLERR!.
-    echo Si hubo CONFLICTO, resuelvelo y luego:
-    echo     git add -A ^&^& git rebase --continue
-    echo (o cancela con: git rebase --abort)
+    echo Continuando directamente con el push...
     echo.
-    set "SEGUIR=N"
-    set /p "SEGUIR=Continuar igualmente con el push? (s/N): "
-    if /i not "!SEGUIR!"=="S" goto :fin
 )
 echo.
 
