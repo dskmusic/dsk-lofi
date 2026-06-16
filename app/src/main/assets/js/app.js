@@ -1163,12 +1163,19 @@
     try {
       const res = await fetch(thumbUrl);
       const blob = await res.blob();
-      const b64 = await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => { const s = String(r.result); resolve(s.slice(s.indexOf(",") + 1)); };
-        r.onerror = reject;
-        r.readAsDataURL(blob);
-      });
+      // normalizar a JPEG (la miniatura puede venir en webp); así el APIC del
+      // MP3 exportado es siempre válido y la notificación nativa la acepta.
+      const buf = await blob.arrayBuffer();
+      let b64 = await shrinkCover(new Uint8Array(buf));
+      if (!b64) {
+        // fallback: usar el blob tal cual si shrinkCover no pudo decodificar
+        b64 = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => { const s = String(r.result); resolve(s.slice(s.indexOf(",") + 1)); };
+          r.onerror = reject;
+          r.readAsDataURL(blob);
+        });
+      }
       if (tok !== coverToken) return;
       currentCoverB64 = b64; coverDirty = true;
       updateVizCover();
@@ -2233,6 +2240,17 @@
   let exportAbort = false;
   let exporting = false;
 
+  // base64 (sin prefijo data:) → Uint8Array
+  function b64ToBytes(b64) {
+    try {
+      const clean = b64.indexOf(",") !== -1 ? b64.slice(b64.indexOf(",") + 1) : b64;
+      const bin = atob(clean);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    } catch (e) { return null; }
+  }
+
   async function doExport() {
     if (!Engine.buffer) return;
     const name = sanitize($("#exportName").value || "dsk-lofi");
@@ -2265,6 +2283,22 @@
         status.textContent = I18n.t("ex_encoding");
         await new Promise((r) => setTimeout(r, 60));
         blob = await Encoder.mp3(rendered, 128, (v) => setP(0.6 + v * 0.4), () => exportAbort);
+        // incrustar carátula (ID3 original o miniatura YouTube) + título/artista
+        try {
+          const titleEl = $("#trackName .deck__name-txt");
+          const artistEl = $("#trackArtist");
+          const meta = {
+            title: titleEl ? (titleEl.textContent || "").trim() : "",
+            artist: artistEl ? (artistEl.textContent || "").trim() : ""
+          };
+          if (currentCoverB64) {
+            meta.coverBytes = b64ToBytes(currentCoverB64);
+            meta.coverMime = "image/jpeg";
+          }
+          if (meta.coverBytes || meta.title || meta.artist) {
+            blob = await Encoder.wrapMp3WithTag(blob, meta);
+          }
+        } catch (e) { /* si falla el tag, se exporta el MP3 sin carátula */ }
       } else {
         blob = Encoder.wav(rendered);
       }

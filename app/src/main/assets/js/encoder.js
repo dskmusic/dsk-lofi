@@ -109,6 +109,89 @@
     wav: encodeWav,
     mp3: encodeMp3,
     probeMp3,
-    get mp3Ready() { return mp3Ready; }
+    get mp3Ready() { return mp3Ready; },
+    id3v2: buildId3v2,
+    wrapMp3WithTag: wrapMp3WithTag
   };
+
+  /* ---------------- ID3v2.3 tag con carátula (APIC) ---------------- */
+  // Codifica un entero de 32 bits como "synchsafe" (7 bits por byte) — tamaño del tag.
+  function synchsafe(n) {
+    return [(n >> 21) & 0x7f, (n >> 14) & 0x7f, (n >> 7) & 0x7f, n & 0x7f];
+  }
+  // Texto ISO-8859-1 (Latin-1); fuera de rango → '?'. Suficiente para TIT2/TPE1.
+  function latin1Bytes(str) {
+    const s = String(str == null ? "" : str);
+    const out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); out[i] = c < 256 ? c : 0x3f; }
+    return out;
+  }
+  // Frame de texto (TIT2, TPE1...): encoding byte 0x00 (Latin-1) + texto.
+  function textFrame(id, text) {
+    const body = latin1Bytes(text);
+    const frame = new Uint8Array(10 + 1 + body.length);
+    for (let i = 0; i < 4; i++) frame[i] = id.charCodeAt(i);
+    const size = 1 + body.length;                 // ID3v2.3: tamaño NO synchsafe
+    frame[4] = (size >> 24) & 0xff; frame[5] = (size >> 16) & 0xff;
+    frame[6] = (size >> 8) & 0xff;  frame[7] = size & 0xff;
+    frame[8] = 0; frame[9] = 0;                    // flags
+    frame[10] = 0x00;                              // encoding Latin-1
+    frame.set(body, 11);
+    return frame;
+  }
+  // Frame APIC con la imagen (jpeg/png). picBytes: Uint8Array.
+  function apicFrame(picBytes, mime) {
+    const mimeB = latin1Bytes(mime || "image/jpeg");
+    // body: enc(1) + mime + 0x00 + picType(1) + desc(0x00) + data
+    const bodyLen = 1 + mimeB.length + 1 + 1 + 1 + picBytes.length;
+    const body = new Uint8Array(bodyLen);
+    let p = 0;
+    body[p++] = 0x00;                              // text encoding Latin-1
+    body.set(mimeB, p); p += mimeB.length;
+    body[p++] = 0x00;                              // fin de mime
+    body[p++] = 0x03;                              // picture type: 3 = cover (front)
+    body[p++] = 0x00;                              // descripción vacía
+    body.set(picBytes, p);
+
+    const frame = new Uint8Array(10 + body.length);
+    const id = "APIC";
+    for (let i = 0; i < 4; i++) frame[i] = id.charCodeAt(i);
+    const size = body.length;
+    frame[4] = (size >> 24) & 0xff; frame[5] = (size >> 16) & 0xff;
+    frame[6] = (size >> 8) & 0xff;  frame[7] = size & 0xff;
+    frame[8] = 0; frame[9] = 0;
+    frame.set(body, 10);
+    return frame;
+  }
+  // Construye un tag ID3v2.3 completo. meta: { title, artist, coverBytes, coverMime }
+  function buildId3v2(meta) {
+    const m = meta || {};
+    const frames = [];
+    if (m.title)  frames.push(textFrame("TIT2", m.title));
+    if (m.artist) frames.push(textFrame("TPE1", m.artist));
+    if (m.coverBytes && m.coverBytes.length) frames.push(apicFrame(m.coverBytes, m.coverMime));
+    if (!frames.length) return null;
+
+    let total = 0; frames.forEach((f) => total += f.length);
+    const header = new Uint8Array(10);
+    header[0] = 0x49; header[1] = 0x44; header[2] = 0x33; // "ID3"
+    header[3] = 0x03; header[4] = 0x00;                   // versión 2.3.0
+    header[5] = 0x00;                                     // flags
+    const ss = synchsafe(total);
+    header[6] = ss[0]; header[7] = ss[1]; header[8] = ss[2]; header[9] = ss[3];
+
+    const tag = new Uint8Array(10 + total);
+    tag.set(header, 0);
+    let off = 10;
+    frames.forEach((f) => { tag.set(f, off); off += f.length; });
+    return tag;
+  }
+  // Antepone el tag ID3v2 al blob MP3. coverB64: base64 SIN prefijo (o "").
+  function wrapMp3WithTag(mp3Blob, meta) {
+    return mp3Blob.arrayBuffer().then((ab) => {
+      const tag = buildId3v2(meta);
+      if (!tag) return mp3Blob;
+      return new Blob([tag, ab], { type: "audio/mpeg" });
+    });
+  }
 })();
