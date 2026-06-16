@@ -1,6 +1,6 @@
 # DSK•LoFi 🎧
 
-**A pocket lo-fi studio for your music.** Play, loop, remix and export your favorite tracks — right from your phone, no internet required (except for the YouTube tab).
+**A pocket lo-fi studio for your music.** Play, remix and export your favorite tracks — right from your phone, no internet required (except for the YouTube tab).
 
 Built by [DSK Music](https://dskmusic.com) — free tools for musicians since 2002.
 
