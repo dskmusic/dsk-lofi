@@ -358,6 +358,13 @@
     // editar etiquetas ID3: solo archivos locales (URI), no pistas de YouTube
     const mi = menuItem(ctx);
     if (mi && mi.uri && !mi.ytId && window.DSKTagEditor) add("m_edit_tags", () => DSKTagEditor.open(mi));
+    // descargar: solo para pistas de YouTube (en streaming, sin archivo local)
+    if (mi && mi.ytId && !mi.uri && window.DSKDownloads && DSKDownloads.enqueue) {
+      add("m_download", () => {
+        try { DSKDownloads.enqueue(mi.ytId, mi.name || "", mi.thumb || ""); UI.toast(T("on_queued")); }
+        catch (e) { UI.toast(T("on_dl_error")); }
+      });
+    }
     if (ctx.kind === "queue") add("m_remove", () => { DSKQueue.remove(ctx.index); UI.toast(T("q_removed")); }, true);
     if (ctx.kind === "list") add("m_remove", () => { listRemoveTrack(ctx.listId, ctx.index); }, true);
     UI.openModal("trackMenuModal");
