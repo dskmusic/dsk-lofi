@@ -6,11 +6,14 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -147,9 +150,17 @@ class DownloadService : Service() {
         return try {
             val client = OkHttpClient.Builder()
                 .connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
-            client.newCall(Request.Builder().url(url).header("User-Agent", ua).build()).execute().use { r ->
-                if (!r.isSuccessful) null else r.body?.bytes()
-            }
+            val raw = client.newCall(Request.Builder().url(url).header("User-Agent", ua).build()).execute().use { r ->
+                if (!r.isSuccessful) return null else r.body?.bytes()
+            } ?: return null
+            // La miniatura de YouTube suele venir en WebP; jaudiotagger/los reproductores
+            // esperan JPEG. Decodificamos (Android decodifica WebP/PNG/JPEG) y recomprimimos
+            // a JPEG real para que la carátula se vea en cualquier reproductor.
+            val bmp: Bitmap = BitmapFactory.decodeByteArray(raw, 0, raw.size) ?: return raw
+            val bos = ByteArrayOutputStream()
+            bmp.compress(Bitmap.CompressFormat.JPEG, 90, bos)
+            try { bmp.recycle() } catch (e: Exception) {}
+            bos.toByteArray()
         } catch (e: Throwable) { null }
     }
 
