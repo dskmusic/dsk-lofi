@@ -1441,9 +1441,16 @@ class MainActivity : Activity() {
                 var tmp: File? = null
                 try {
                     val name = queryDisplayName(uri)
-                    val ext = name.substringAfterLast('.', "mp3").lowercase()
-                    tmp = File(cacheDir, "tagrd_" + System.nanoTime() + "." + ext)
-                    contentResolver.openInputStream(uri)?.use { input -> tmp!!.outputStream().use { input.copyTo(it) } }
+                    val nameExt = name.substringAfterLast('.', "").lowercase()
+                    // el contenedor real puede no coincidir con la extensión (p. ej.
+                    // descargas M4A renombradas a .mp3): se detecta por el contenido
+                    // y se nombra el temporal con la extensión real para que
+                    // jaudiotagger use el lector/escritor correcto.
+                    val raw = File(cacheDir, "tagrdraw_" + System.nanoTime())
+                    contentResolver.openInputStream(uri)?.use { input -> raw.outputStream().use { input.copyTo(it) } }
+                    val realExt = sniffAudioExt(raw).ifBlank { if (nameExt.isNotBlank()) nameExt else "mp3" }
+                    tmp = File(cacheDir, "tagrd_" + System.nanoTime() + "." + realExt)
+                    if (!raw.renameTo(tmp!!)) { raw.copyTo(tmp!!, overwrite = true); try { raw.delete() } catch (e: Exception) {} }
                     val af = org.jaudiotagger.audio.AudioFileIO.read(tmp)
                     val tag = af.tag
                     fun g(k: org.jaudiotagger.tag.FieldKey): String =
@@ -1478,9 +1485,15 @@ class MainActivity : Activity() {
                 var tmp: File? = null
                 try {
                     val name = queryDisplayName(uri)
-                    val ext = name.substringAfterLast('.', "mp3").lowercase()
-                    tmp = File(cacheDir, "tagwr_" + System.nanoTime() + "." + ext)
-                    contentResolver.openInputStream(uri)?.use { input -> tmp!!.outputStream().use { input.copyTo(it) } }
+                    val nameExt = name.substringAfterLast('.', "").lowercase()
+                    // detectar el contenedor real (las descargas M4A pueden venir
+                    // renombradas a .mp3): el temporal debe llevar la extensión real
+                    // para que jaudiotagger escriba con el contenedor correcto.
+                    val raw = File(cacheDir, "tagwrraw_" + System.nanoTime())
+                    contentResolver.openInputStream(uri)?.use { input -> raw.outputStream().use { input.copyTo(it) } }
+                    val realExt = sniffAudioExt(raw).ifBlank { if (nameExt.isNotBlank()) nameExt else "mp3" }
+                    tmp = File(cacheDir, "tagwr_" + System.nanoTime() + "." + realExt)
+                    if (!raw.renameTo(tmp!!)) { raw.copyTo(tmp!!, overwrite = true); try { raw.delete() } catch (e: Exception) {} }
                     val af = org.jaudiotagger.audio.AudioFileIO.read(tmp)
                     val tag = af.tagOrCreateAndSetDefault
                     fun setOrDel(k: org.jaudiotagger.tag.FieldKey, v: String) {
@@ -1971,6 +1984,28 @@ class MainActivity : Activity() {
                 }
             }
             n
+        } catch (e: Exception) { "" }
+    }
+
+    // Detecta el contenedor real de un audio por sus primeros bytes (no por la
+    // extensión). Devuelve "mp3"/"m4a"/"flac"/"ogg"/"wav" o "" si no se reconoce.
+    private fun sniffAudioExt(f: File): String {
+        return try {
+            f.inputStream().use { ins ->
+                val b = ByteArray(16)
+                val n = ins.read(b)
+                if (n < 4) return ""
+                fun c(i: Int, ch: Char) = i < n && b[i] == ch.code.toByte()
+                // ID3 (mp3 con tag) o frame sync MPEG
+                if (b[0] == 0x49.toByte() && b[1] == 0x44.toByte() && b[2] == 0x33.toByte()) return "mp3"
+                if ((b[0].toInt() and 0xFF) == 0xFF && (b[1].toInt() and 0xE0) == 0xE0) return "mp3"
+                // ....ftyp → contenedor MP4/M4A
+                if (n >= 8 && c(4, 'f') && c(5, 't') && c(6, 'y') && c(7, 'p')) return "m4a"
+                if (c(0, 'f') && c(1, 'L') && c(2, 'a') && c(3, 'C')) return "flac"
+                if (c(0, 'O') && c(1, 'g') && c(2, 'g') && c(3, 'S')) return "ogg"
+                if (c(0, 'R') && c(1, 'I') && c(2, 'F') && c(3, 'F')) return "wav"
+            }
+            ""
         } catch (e: Exception) { "" }
     }
 
