@@ -764,6 +764,37 @@
   </div>
 </div>
 
+<!-- ===================== A–B REPEAT ===================== -->
+<div class="modal" id="abModal" aria-hidden="true" role="dialog">
+  <div class="modal__scrim" data-close="abModal"></div>
+  <div class="modal__card ab-card">
+    <div class="modal__head">
+      <h2 class="modal__title" data-i18n="ab_title">A–B REPEAT</h2>
+      <button class="icon-btn modal__x" type="button" data-close="abModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+    </div>
+    <div class="ab-now"><span id="abNow">0:00</span></div>
+    <div class="ab-row">
+      <span class="ab-tag ab-tag--a">A</span>
+      <span class="ab-time" id="abTimeA">—</span>
+      <button class="ab-nudge" id="abAMinus" type="button" aria-label="A −">−</button>
+      <button class="ab-nudge" id="abAPlus" type="button" aria-label="A +">+</button>
+      <button class="btn btn--ghost ab-set" id="abSetA" type="button" data-i18n="ab_set">SET</button>
+    </div>
+    <div class="ab-row">
+      <span class="ab-tag ab-tag--b">B</span>
+      <span class="ab-time" id="abTimeB">—</span>
+      <button class="ab-nudge" id="abBMinus" type="button" aria-label="B −">−</button>
+      <button class="ab-nudge" id="abBPlus" type="button" aria-label="B +">+</button>
+      <button class="btn btn--ghost ab-set" id="abSetB" type="button" data-i18n="ab_set">SET</button>
+    </div>
+    <div class="ab-actions">
+      <button class="ab-play" id="abPlay" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polygon points="8 4.5 20 12 8 19.5"></polygon></svg></button>
+      <button class="btn btn--ghost ab-clear" id="abClear" type="button" data-i18n="ab_clear">CLEAR</button>
+    </div>
+    <p class="ab-hint" data-i18n="ab_hint">Set A and B to loop that section. Nudge to fine-tune.</p>
+  </div>
+</div>
+
 <!-- ===================== KARAOKE (PANTALLA COMPLETA) ===================== -->
 <div class="modal modal--karaoke" id="karaokeModal" aria-hidden="true" role="dialog">
   <div class="kar-top">

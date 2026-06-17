@@ -175,8 +175,10 @@
       '<p>Toca la pantalla de inicio para abrir un <b>archivo</b> (se carga también el resto de su carpeta), o pulsa <b>Cargar carpeta</b> para elegir una carpeta entera.</p>' +
       '<h4>Reproducción</h4>' +
       '<p>Play/pausa, anterior/siguiente, <b>aleatorio</b> y velocidad. Toca el título de la lista para abrir la vista a pantalla completa.</p>' +
+      '<h4>Repetir, avance rápido y A–B</h4>' +
+      '<p>En la cabecera de la minilista, el botón de <b>repetición</b> cicla entre <b>desactivado</b>, <b>repetir actual</b> (un "1") y <b>repetir todo</b>. <b>Manteniendo pulsados</b> los botones ◀/▶ retrocedes o avanzas dentro de la pista (tipo &lt;&lt;/&gt;&gt;, con aceleración); un toque corto cambia de pista. Y <b>manteniendo pulsado Play/Pausa</b> se abre <b>Repetir A–B</b>: marca <b>A</b> y <b>B</b> (botones FIJAR), ajústalos al detalle con −/+ y la app repetirá ese tramo en bucle; <b>LIMPIAR</b> lo desactiva (también se borra al cambiar de pista).</p>' +
       '<h4>Lista, Archivos y Listas</h4>' +
-      '<p>En esa vista hay tres pestañas: <b>En curso</b> (la cola actual), <b>Archivos</b> (explorador de carpetas) y <b>Listas</b> (crea y edita tus listas). El botón <b>⋮</b> de cada pista permite reproducir ahora, en siguiente, al final o añadir a una lista. La app <b>recuerda</b> la última pestaña, carpeta o lista que tenías abierta.</p>' +
+      '<p>En esa vista hay tres pestañas: <b>En curso</b> (la cola actual), <b>Archivos</b> (explorador de carpetas) y <b>Listas</b> (crea y edita tus listas). El botón <b>⋮</b> de cada pista permite reproducir ahora, en siguiente, al final, añadir a una lista o <b>editar etiquetas</b>; en pistas de YouTube también <b>Descargar</b>. La app <b>recuerda</b> la última pestaña, carpeta o lista que tenías abierta.</p>' +
       '<h4>Añadir todo y selección múltiple</h4>' +
       '<p>Dentro de una carpeta, el botón <b>añadir todo</b> mete todas sus pistas en una lista de una vez. La selección múltiple se activa con el botón <b>seleccionar</b> (✓) o <b>manteniendo pulsada</b> una pista (en Archivos, en el detalle de una lista y en Online). Marca varias pistas y usa la barra inferior para reproducir <b>siguiente</b>, <b>al final</b>, <b>añadir a lista</b>, <b>reproducir</b>/<b>descargar</b> (en Online) o <b>eliminar</b> (en listas). Al cambiar de pestaña o salir, la selección se desactiva sola.</p>' +
       '<h4>Pistas y duración</h4>' +
@@ -210,8 +212,10 @@
       '<p>Tap the start screen to open a <b>file</b> (the rest of its folder loads too), or tap <b>Load folder</b> to pick a whole folder.</p>' +
       '<h4>Playback</h4>' +
       '<p>Play/pause, previous/next, <b>shuffle</b> and speed. Tap the playlist title to open the full-screen view.</p>' +
+      '<h4>Repeat, fast-seek and A–B</h4>' +
+      '<p>In the mini-list header, the <b>repeat</b> button cycles through <b>off</b>, <b>repeat current</b> (a "1") and <b>repeat all</b>. <b>Press and hold</b> the ◀/▶ buttons to rewind or fast-forward within the track (&lt;&lt;/&gt;&gt;, with acceleration); a short tap changes track. And <b>holding Play/Pause</b> opens <b>A–B repeat</b>: mark <b>A</b> and <b>B</b> (SET buttons), fine-tune them with −/+, and the app loops that section; <b>CLEAR</b> turns it off (it also clears when the track changes).</p>' +
       '<h4>Queue, Files and Playlists</h4>' +
-      '<p>That view has three tabs: <b>Queue</b> (current list), <b>Files</b> (folder browser) and <b>Playlists</b> (create and edit your lists). Each track\'s <b>⋮</b> button lets you play now, play next, add to end or add to a playlist. The app <b>remembers</b> the last tab, folder or playlist you had open.</p>' +
+      '<p>That view has three tabs: <b>Queue</b> (current list), <b>Files</b> (folder browser) and <b>Playlists</b> (create and edit your lists). Each track\'s <b>⋮</b> button lets you play now, play next, add to end, add to a playlist or <b>edit tags</b>; for YouTube tracks also <b>Download</b>. The app <b>remembers</b> the last tab, folder or playlist you had open.</p>' +
       '<h4>Add all and multi-select</h4>' +
       '<p>Inside a folder, the <b>add all</b> button drops every track into a playlist at once. Multi-select turns on with the <b>select</b> (✓) button or by <b>long-pressing</b> a track (in Files, inside a playlist and in Online). Tick several tracks and use the bottom bar to play <b>next</b>, <b>at the end</b>, <b>add to playlist</b>, <b>play</b>/<b>download</b> (in Online) or <b>remove</b> (in playlists). Switching tabs or leaving turns selection off.</p>' +
       '<h4>Track count and duration</h4>' +

@@ -707,6 +707,59 @@
       if (plIndex < playlist.length - 1) gotoNext(true); else setPlayIcon(false);
     }
   }
+
+  /* ===================== A–B REPEAT ===================== */
+  // Repite un tramo marcado (A→B). Se abre manteniendo pulsado play/pausa.
+  const ab = { on: false, a: null, b: null };
+  const AB_STEP = 0.5;          // paso de ajuste (s)
+  let _abHoldFired = false;     // para suprimir el toggle tras la pulsación larga
+  function abLoaded() { return playerOnlyMode ? !!nativeAudio.src : !!Engine.buffer; }
+  function abDur() { return curDurationOverride > 0 ? curDurationOverride : (Engine.duration || 0); }
+  function abActive() { return ab.on && ab.a != null && ab.b != null && ab.b > ab.a; }
+  function fmtAB(s) {
+    s = Math.max(0, s || 0);
+    const m = Math.floor(s / 60), sec = Math.floor(s % 60), d = Math.floor((s - Math.floor(s)) * 10);
+    return m + ":" + String(sec).padStart(2, "0") + "." + d;
+  }
+  function abRefresh() {
+    ab.on = (ab.a != null && ab.b != null && ab.b > ab.a);
+    const ta = $("#abTimeA"), tb = $("#abTimeB");
+    if (ta) ta.textContent = ab.a != null ? fmtAB(ab.a) : "—";
+    if (tb) tb.textContent = ab.b != null ? fmtAB(ab.b) : "—";
+    const card = $("#abModal");
+    if (card) card.querySelector(".ab-card").classList.toggle("ab-card--on", abActive());
+  }
+  function abReset() { ab.on = false; ab.a = null; ab.b = null; abRefresh(); }
+  function abSetA() { if (!abLoaded()) return; ab.a = Engine.position() || 0; if (ab.b != null && ab.b <= ab.a) ab.b = null; abRefresh(); }
+  function abSetB() { if (!abLoaded()) return; const p = Engine.position() || 0; if (ab.a == null) ab.a = 0; if (p <= ab.a) return; ab.b = p; abRefresh(); }
+  function abNudge(which, delta) {
+    const dur = abDur();
+    if (which === "a") {
+      if (ab.a == null) return;
+      const hi = ab.b != null ? ab.b - 0.1 : (dur || ab.a + delta);
+      ab.a = Math.max(0, Math.min(ab.a + delta, hi));
+    } else {
+      if (ab.b == null) return;
+      const lo = ab.a != null ? ab.a + 0.1 : 0;
+      ab.b = Math.max(lo, Math.min(ab.b + delta, dur || ab.b + delta));
+    }
+    abRefresh();
+  }
+  function abModalOpen() { const m = $("#abModal"); return !!(m && m.classList.contains("modal--open")); }
+  function openAbModal() {
+    abRefresh();
+    const ap = $("#abPlay");
+    if (ap) ap.innerHTML = Engine.playing ? SVG_PAUSE_SM : SVG_PLAY_SM;
+    UI.openModal("abModal");
+  }
+  // comprobación del bucle A–B (se llama desde raf en cada frame)
+  function abTick() {
+    if (!abActive() || !Engine.playing) return;
+    const pos = Engine.position() || 0;
+    if (pos >= ab.b - 0.02) { DSKControls.seek(ab.a); }
+  }
+  const SVG_PLAY_SM = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polygon points="8 4.5 20 12 8 19.5"></polygon></svg>';
+  const SVG_PAUSE_SM = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14"></rect><rect x="14" y="5" width="4" height="14"></rect></svg>';
   let currentSource = { type: "none", name: "" };   // fuente en curso (file|folder|list)
 
   /* avisa a la UI (mini-lista / library.js) de cualquier cambio en la cola */
@@ -1287,6 +1340,7 @@
 
   async function loadFile(track, autoplay, prepareOnly) {
     if (!track) return;
+    try { abReset(); } catch (e) {}   // A–B no aplica a otra pista
     // compat: si llega un File directo (web antiguo), envolverlo
     if (track instanceof File) track = { name: track.name, file: track };
     // YouTube: requiere modo reproductor (audio remoto). Cambia sin recargar.
@@ -1503,6 +1557,7 @@
 
   function bindTransport() {
     $("#btnPlay").addEventListener("click", async () => {
+      if (_abHoldFired) { _abHoldFired = false; return; }   // fue pulsación larga → A–B
       // cola de YouTube restaurada en frío: aún no se resolvió el stream.
       // Al pulsar play, cargamos de verdad la pista actual y la reproducimos.
       if (ytPendingResolve && playlist[plIndex] && playlist[plIndex].ytId) {
@@ -1518,6 +1573,33 @@
     });
 
     $("#btnEject").addEventListener("click", () => { try { DSKQueue.open(); } catch (e) {} });
+
+    // A–B repeat: mantener pulsado play/pausa abre el mini modal
+    (function () {
+      const btn = $("#btnPlay"); if (!btn) return;
+      let timer = 0;
+      const clear = () => { if (timer) { clearTimeout(timer); timer = 0; } };
+      btn.addEventListener("pointerdown", () => {
+        clear(); _abHoldFired = false;
+        timer = setTimeout(() => { timer = 0; _abHoldFired = true; openAbModal(); try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {} }, 450);
+      });
+      ["pointerup", "pointercancel", "pointerleave"].forEach((ev) => btn.addEventListener(ev, clear));
+    })();
+    const abBind = (id, fn) => { const b = $("#" + id); if (b) b.addEventListener("click", fn); };
+    abBind("abSetA", abSetA);
+    abBind("abSetB", abSetB);
+    abBind("abAMinus", () => abNudge("a", -AB_STEP));
+    abBind("abAPlus", () => abNudge("a", AB_STEP));
+    abBind("abBMinus", () => abNudge("b", -AB_STEP));
+    abBind("abBPlus", () => abNudge("b", AB_STEP));
+    abBind("abClear", abReset);
+    abBind("abPlay", async () => {
+      const loaded = playerOnlyMode ? !!nativeAudio.src : !!Engine.buffer;
+      if (!loaded) return;
+      if (Engine.playing) { setPlayIcon(false); await Engine.pause(); }
+      else { await Engine.play(); setPlayIcon(true); keepAliveOn(); }
+      const ap = $("#abPlay"); if (ap) ap.innerHTML = Engine.playing ? SVG_PAUSE_SM : SVG_PLAY_SM;
+    });
     const plFsOpenFile = $("#plFsOpenFile");
     if (plFsOpenFile) plFsOpenFile.addEventListener("click", pickAudio);
 
@@ -2358,6 +2440,12 @@
   let _lastMediaPush = 0;
   function raf(now) {
     const t = now || performance.now();
+    // bucle A–B (independiente de si se ven los visuales)
+    abTick();
+    if (abModalOpen()) {
+      const an = $("#abNow"); if (an) an.textContent = fmtAB(Engine.position());
+      const ap = $("#abPlay"); if (ap) ap.classList.toggle("is-on", Engine.playing);
+    }
     // ¿se ven realmente los visuales del reproductor? Si la pantalla está
     // oculta o hay un modal encima (letras, karaoke, biblioteca…), NO dibujamos:
     // así liberamos el hilo principal para el audio y evitamos artefactos.
