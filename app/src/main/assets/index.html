@@ -774,19 +774,23 @@
     </div>
     <div class="ab-now"><span id="abNow">0:00</span></div>
     <canvas class="ab-wave" id="abWave"></canvas>
-    <div class="ab-row">
-      <span class="ab-tag ab-tag--a">A</span>
-      <span class="ab-time" id="abTimeA">—</span>
-      <button class="ab-nudge" id="abAMinus" type="button" aria-label="A −">−</button>
-      <button class="ab-nudge" id="abAPlus" type="button" aria-label="A +">+</button>
-      <button class="btn btn--ghost ab-set" id="abSetA" type="button" data-i18n="ab_set">SET</button>
+    <div class="ab-dj">
+      <button class="ab-dj__btn" id="abMoveBack" type="button" aria-label="move back"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polygon points="19 20 9 12 19 4"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg></button>
+      <button class="ab-dj__btn ab-dj__btn--txt" id="abHalve" type="button" aria-label="halve">½</button>
+      <button class="ab-dj__btn ab-dj__btn--txt" id="abDouble" type="button" aria-label="double">×2</button>
+      <button class="ab-dj__btn" id="abMoveFwd" type="button" aria-label="move forward"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polygon points="5 4 15 12 5 20"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg></button>
     </div>
-    <div class="ab-row">
-      <span class="ab-tag ab-tag--b">B</span>
-      <span class="ab-time" id="abTimeB">—</span>
-      <button class="ab-nudge" id="abBMinus" type="button" aria-label="B −">−</button>
-      <button class="ab-nudge" id="abBPlus" type="button" aria-label="B +">+</button>
-      <button class="btn btn--ghost ab-set" id="abSetB" type="button" data-i18n="ab_set">SET</button>
+    <div class="ab-points">
+      <div class="ab-pt ab-pt--a">
+        <div class="ab-pt__hd"><span class="ab-tag ab-tag--a">A</span><span class="ab-time" id="abTimeA">—</span></div>
+        <button class="ab-pt__set" id="abSetA" type="button" data-i18n="ab_set">SET</button>
+        <div class="ab-pt__nudge"><button class="ab-nudge" id="abAMinus" type="button" aria-label="A −">−</button><button class="ab-nudge" id="abAPlus" type="button" aria-label="A +">+</button></div>
+      </div>
+      <div class="ab-pt ab-pt--b">
+        <div class="ab-pt__hd"><span class="ab-tag ab-tag--b">B</span><span class="ab-time" id="abTimeB">—</span></div>
+        <button class="ab-pt__set" id="abSetB" type="button" data-i18n="ab_set">SET</button>
+        <div class="ab-pt__nudge"><button class="ab-nudge" id="abBMinus" type="button" aria-label="B −">−</button><button class="ab-nudge" id="abBPlus" type="button" aria-label="B +">+</button></div>
+      </div>
     </div>
     <div class="ab-step" id="abStepSel">
       <span class="ab-step__lbl" data-i18n="ab_step">Step</span>

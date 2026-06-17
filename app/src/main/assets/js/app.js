@@ -799,6 +799,27 @@
   }
   function abSetA() { if (!abLoaded()) return; ab.a = abPlace(Engine.position() || 0); if (ab.b != null && ab.b <= ab.a) ab.b = null; abRefresh(); abZoom(); }
   function abSetB() { if (!abLoaded()) return; const p = abPlace(Engine.position() || 0); if (ab.a == null) ab.a = 0; if (p <= ab.a) return; ab.b = p; abRefresh(); abZoom(); }
+  // mueve la selección entera (mantiene la duración) por su propia longitud:
+  // navegar entre "compases" hacia delante/atrás
+  function abMove(dir) {
+    if (ab.a == null || ab.b == null) return;
+    const dur = abViewDur() || abDur() || 0;
+    const len = ab.b - ab.a;
+    let na = ab.a + dir * len;
+    na = Math.max(0, Math.min(na, dur > 0 ? dur - len : na));
+    ab.a = na; ab.b = na + len;
+    abRefresh(); abZoom();
+  }
+  // escala la selección (×0.5 = chop a la mitad, ×2 = el doble), fijando A
+  function abScale(factor) {
+    if (ab.a == null || ab.b == null) return;
+    const dur = abViewDur() || abDur() || 0;
+    let len = (ab.b - ab.a) * factor;
+    len = Math.max(0.02, len);                       // mínimo audible
+    if (dur > 0) len = Math.min(len, dur - ab.a);    // no salir de la pista
+    ab.b = ab.a + len;
+    abRefresh(); abZoom();
+  }
   function abNudge(which, delta) {
     const dur = abViewDur();
     if (which === "a") {
@@ -1871,6 +1892,10 @@
     abBind("abExportBtn", () => exportLoop(abRepsVal));
     { const rr = $("#abReactSel"); if (rr) rr.addEventListener("click", (e) => { const b = e.target.closest("[data-react]"); if (b) setAbReact(parseInt(b.getAttribute("data-react"), 10)); }); }
     abBind("abSnapChip", () => setAbSnap(!abSnap));
+    abBind("abMoveBack", () => abMove(-1));
+    abBind("abMoveFwd", () => abMove(1));
+    abBind("abHalve", () => abScale(0.5));
+    abBind("abDouble", () => abScale(2));
     abInitWave();
     abBind("abPlay", async () => {
       const loaded = playerOnlyMode ? !!nativeAudio.src : !!Engine.buffer;
