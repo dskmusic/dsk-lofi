@@ -2114,3 +2114,13 @@
     }
     .stm-mrow__fill { height: 100%; width: 0%; background: var(--neon-cyan); transition: width .15s ease; }
     .stm-mrow__pct { font-size: 10px; color: var(--color-text-faint); text-align: right; margin-top: 2px; }
+
+    /* cronómetro de separación de stems */
+    .stm-time { margin-top: 6px; font-size: 13px; color: var(--neon-cyan); font-variant-numeric: tabular-nums; }
+    .stm-time--done { color: var(--acc); font-weight: var(--fw-semi); }
+
+    /* favorito + borrar en filas de modelo */
+    .stm-fav { background: none; border: none; cursor: pointer; font-size: 18px; line-height: 1; color: var(--color-text-faint); padding: 0 2px; }
+    .stm-fav--on { color: var(--neon-amber); }
+    .stm-delbtn { background: none; border: none; cursor: pointer; font-size: 15px; line-height: 1; opacity: .7; padding: 0 2px; }
+    .stm-delbtn:hover { opacity: 1; }

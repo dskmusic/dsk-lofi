@@ -70,7 +70,7 @@ class StemSeparator(
     ): Result {
         onProgress(2, "decode")
         val stereo = decodePcm(sourceUri, sourcePath) ?: throw IllegalStateException("decode")
-        val left = stereo[0]; val right = stereo[1]
+        var left = stereo[0]; var right = stereo[1]
         val n = min(left.size, right.size)
         if (n < HOP) throw IllegalStateException("decode")
         if (isCancelled()) throw InterruptedException("cancel")
@@ -97,6 +97,8 @@ class StemSeparator(
             val mpL = FloatArray(total); val mpR = FloatArray(total)
             System.arraycopy(left, 0, mpL, trim, n)
             System.arraycopy(right, 0, mpR, trim, n)
+            // liberar los originales: la mezcla ya está en mpL/mpR (región [trim, trim+n])
+            left = FloatArray(0); right = FloatArray(0); stereo[0] = left; stereo[1] = right
             val numChunks = (n + pad) / gen
             val instL = FloatArray(n + pad); val instR = FloatArray(n + pad)
 
@@ -137,19 +139,18 @@ class StemSeparator(
             onProgress(92, "recon")
             var instFile: File? = null
             var voxFile: File? = null
-            // instrumental (recortado a n)
-            val iL = instL.copyOf(n); val iR = instR.copyOf(n)
+            val baseNm = outDir.name   // = título saneado (la carpeta lleva el nombre de la canción)
             onProgress(95, "save")
             if (wantInstrumental) {
-                instFile = File(outDir, "instrumental.wav")
-                writeWavStereo(instFile, iL, iR)
+                instFile = File(outDir, "$baseNm (instrumental).wav")
+                writeWavStereo(instFile, instL, instR, n)   // sin copia: longitud n
             }
             if (wantVocals) {
-                // voz = mezcla − instrumental
+                // voz = mezcla − instrumental (la mezcla está en mpL/mpR desplazada 'trim')
                 val vL = FloatArray(n); val vR = FloatArray(n)
-                for (s in 0 until n) { vL[s] = left[s] - iL[s]; vR[s] = right[s] - iR[s] }
-                voxFile = File(outDir, "vocals.wav")
-                writeWavStereo(voxFile, vL, vR)
+                for (s in 0 until n) { vL[s] = mpL[trim + s] - instL[s]; vR[s] = mpR[trim + s] - instR[s] }
+                voxFile = File(outDir, "$baseNm (voz).wav")
+                writeWavStereo(voxFile, vL, vR, n)
             }
             onProgress(100, "save")
             return Result(instFile, voxFile)
@@ -283,6 +284,7 @@ class StemSeparator(
 
     private fun decodePcm(uri: Uri?, path: String?): Array<FloatArray>? {
         val extractor = MediaExtractor()
+        var codec: MediaCodec? = null
         try {
             if (uri != null) extractor.setDataSource(ctx, uri, null)
             else if (path != null) extractor.setDataSource(path)
@@ -299,15 +301,21 @@ class StemSeparator(
             val srcSr = if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else SR
             val srcCh = if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
             val mime = format.getString(MediaFormat.KEY_MIME)!!
-            val codec = MediaCodec.createDecoderByType(mime)
+
+            // pre-dimensionar con la duración (evita realojos y picos de memoria)
+            val durUs = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
+            val est = if (durUs > 0) ((durUs / 1_000_000.0) * srcSr).toInt() + srcSr else (1 shl 20)
+            var bufL = FloatArray(est.coerceAtLeast(1024)); var lenL = 0
+            var bufR = FloatArray(bufL.size); var lenR = 0
+
+            codec = MediaCodec.createDecoderByType(mime)
             codec.configure(format, null, null, 0)
             codec.start()
 
             val info = MediaCodec.BufferInfo()
-            val outL = ArrayList<Float>(1 shl 20); val outR = ArrayList<Float>(1 shl 20)
             var sawIn = false; var sawOut = false
             while (!sawOut) {
-                if (isCancelled()) { codec.stop(); codec.release(); extractor.release(); throw InterruptedException("cancel") }
+                if (isCancelled()) throw InterruptedException("cancel")
                 if (!sawIn) {
                     val inIx = codec.dequeueInputBuffer(10000)
                     if (inIx >= 0) {
@@ -324,23 +332,41 @@ class StemSeparator(
                     val count = info.size / 2
                     var i = 0
                     while (i < count) {
-                        if (srcCh >= 2) { outL.add(sb.get(i) / 32768f); outR.add(sb.get(i + 1) / 32768f); i += 2 }
-                        else { val s = sb.get(i) / 32768f; outL.add(s); outR.add(s); i += 1 }
+                        if (srcCh >= 2) {
+                            if (lenL >= bufL.size) bufL = bufL.copyOf(bufL.size + bufL.size / 2)
+                            bufL[lenL++] = sb.get(i) / 32768f
+                            if (lenR >= bufR.size) bufR = bufR.copyOf(bufR.size + bufR.size / 2)
+                            bufR[lenR++] = sb.get(i + 1) / 32768f
+                            i += 2
+                        } else {
+                            val s = sb.get(i) / 32768f
+                            if (lenL >= bufL.size) bufL = bufL.copyOf(bufL.size + bufL.size / 2)
+                            bufL[lenL++] = s
+                            if (lenR >= bufR.size) bufR = bufR.copyOf(bufR.size + bufR.size / 2)
+                            bufR[lenR++] = s
+                            i += 1
+                        }
                     }
                     codec.releaseOutputBuffer(outIx, false)
                     if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) sawOut = true
                 }
             }
-            codec.stop(); codec.release(); extractor.release()
 
-            var l = toFloatArray(outL); var r = toFloatArray(outR)
+            var l = if (lenL == bufL.size) bufL else bufL.copyOf(lenL); bufL = FloatArray(0)
+            var r = if (lenR == bufR.size) bufR else bufR.copyOf(lenR); bufR = FloatArray(0)
             if (srcSr != SR) { l = resampleLinear(l, srcSr, SR); r = resampleLinear(r, srcSr, SR) }
             return arrayOf(l, r)
-        } catch (e: InterruptedException) { throw e }
-        catch (e: Exception) { try { extractor.release() } catch (_: Exception) {}; return null }
+        } catch (e: InterruptedException) {
+            throw e
+        } catch (e: Exception) {
+            return null
+        } finally {
+            try { codec?.stop() } catch (_: Exception) {}
+            try { codec?.release() } catch (_: Exception) {}
+            try { extractor.release() } catch (_: Exception) {}
+        }
     }
 
-    private fun toFloatArray(a: ArrayList<Float>): FloatArray { val o = FloatArray(a.size); for (i in a.indices) o[i] = a[i]; return o }
 
     private fun resampleLinear(x: FloatArray, from: Int, to: Int): FloatArray {
         if (from == to || x.isEmpty()) return x
@@ -357,9 +383,9 @@ class StemSeparator(
 
     // ---------------------------------------------------------------- WAV
 
-    private fun writeWavStereo(file: File, l: FloatArray, r: FloatArray) {
+    private fun writeWavStereo(file: File, l: FloatArray, r: FloatArray, count: Int = -1) {
         file.parentFile?.mkdirs()
-        val n = min(l.size, r.size)
+        val n = if (count >= 0) min(count, min(l.size, r.size)) else min(l.size, r.size)
         val dataLen = n * 2 * 2
         FileOutputStream(file).use { fos ->
             fos.write(wavHeader(dataLen, SR, 2, 16))

@@ -55,8 +55,9 @@ class StemsBridge(
         return File(stemsRoot(), safe)
     }
 
-    private fun instFile(name: String?) = File(songDir(name), "instrumental.wav")
-    private fun voxFile(name: String?) = File(songDir(name), "vocals.wav")
+    private fun baseName(name: String?) = DskStorage.sanitize((name ?: "track")).ifBlank { "track" }
+    private fun instFile(name: String?) = File(songDir(name), baseName(name) + " (instrumental).wav")
+    private fun voxFile(name: String?) = File(songDir(name), baseName(name) + " (voz).wav")
 
     /** Lista de modelos .onnx disponibles (en /DSKlofi/models + assets/models). */
     @JavascriptInterface
@@ -127,6 +128,20 @@ class StemsBridge(
 
     @JavascriptInterface
     fun cancelDownload() { dlCancel = true; dlWorker?.interrupt() }
+
+    /** Borra un modelo de /DSKlofi/models (y la copia en filesDir si existe). */
+    @JavascriptInterface
+    fun deleteModel(filename: String?): Boolean {
+        if (filename.isNullOrBlank()) return false
+        var ok = false
+        try { val f = File(modelsDir(), filename); if (f.exists()) ok = f.delete() } catch (e: Exception) {}
+        try { val f2 = File(File(activity.filesDir, "models"), filename); if (f2.exists()) f2.delete() } catch (e: Exception) {}
+        return ok
+    }
+
+    /** Libera memoria: no mantenemos el modelo residente entre pasadas; solo una pista al GC. */
+    @JavascriptInterface
+    fun freeModel() { System.gc() }
 
     private fun downloadModelTo(url: String, dest: File) {
         dest.parentFile?.mkdirs()
@@ -256,6 +271,7 @@ class StemsBridge(
             } finally {
                 worker = null
                 StemsService.stop(activity)
+                System.gc()   // sugerir liberación tras una pasada pesada
             }
         }.also { it.priority = Thread.NORM_PRIORITY - 1; it.start() }
     }
