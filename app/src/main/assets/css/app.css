@@ -521,6 +521,11 @@
     .ab-card { width: min(94vw, 380px); }
     .ab-card--on .ab-now { color: var(--acc); }
     .ab-now { text-align: center; font-family: var(--font-mono); font-size: var(--fs-h2, 28px); font-weight: 600; margin: var(--space-1) 0; color: var(--color-text); letter-spacing: 0.02em; }
+    .ab-top { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-1) 0 var(--space-2); }
+    .ab-top .ab-now { flex: 1; margin: 0; }
+    .ab-clearbtn { flex: none; width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--color-surface-raised); color: var(--color-text-muted); box-shadow: var(--btn-edge), var(--shadow-inset); }
+    .ab-clearbtn .ic { width: 18px; height: 18px; }
+    .ab-clearbtn:active { transform: scale(0.92); color: var(--neon-red); }
     .ab-wave { display: block; width: 100%; height: 116px; margin: var(--space-1) 0 var(--space-2); border-radius: var(--radius-sm); background: var(--color-surface-raised); box-shadow: var(--shadow-inset); touch-action: none; cursor: ew-resize; }
     .ab-dj { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
     .ab-dj__btn { flex: 1; height: 40px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); background: var(--color-surface-raised); color: var(--color-text); box-shadow: var(--btn-edge), var(--shadow-inset); font-family: var(--font-mono); font-weight: 700; font-size: 16px; }

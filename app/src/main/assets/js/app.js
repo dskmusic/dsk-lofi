@@ -1896,6 +1896,7 @@
     abBind("abMoveFwd", () => abMove(1));
     abBind("abHalve", () => abScale(0.5));
     abBind("abDouble", () => abScale(2));
+    { const lb = $("#btnLoop"); if (lb) lb.addEventListener("click", () => openAbModal()); }
     abInitWave();
     abBind("abPlay", async () => {
       const loaded = playerOnlyMode ? !!nativeAudio.src : !!Engine.buffer;
