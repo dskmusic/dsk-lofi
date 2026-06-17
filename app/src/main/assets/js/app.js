@@ -686,7 +686,7 @@
   }
   function setRepeat(mode) {
     repeatMode = ((mode % 3) + 3) % 3;
-    try { Engine.loop = (repeatMode === 1); } catch (e) {}   // "repetir actual" = bucle de la fuente
+    try { Engine.setLoop(repeatMode === 1); } catch (e) {}   // "repetir actual" = bucle de la fuente
     try { localStorage.setItem("dsklofi.repeat", String(repeatMode)); } catch (e) {}
     updateRepeatBtn();
   }
