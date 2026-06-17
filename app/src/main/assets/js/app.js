@@ -2547,6 +2547,7 @@
     $("#timerCancel").hidden = true;
     // restaurar volumen por si quedó a media bajada (timer por minutos o fin de pista)
     if (_eotFading) { setOutputVolumeFactor(1); _eotFading = false; }
+    try { Engine.resetFade(); } catch (e) {}   // reset instantáneo (no rampa lenta)
     if (Engine.chain) {
       try {
         Engine.setParam("output", "volume", Engine.params.output.volume);

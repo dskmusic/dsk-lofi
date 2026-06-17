@@ -523,6 +523,20 @@
       } catch (e) { try { g.value = k; } catch (_) {} }
     },
 
+    // Restaura el fundido de salida a 1 de forma INSTANTÁNEA. Se llama al
+    // (re)arrancar la reproducción para que, tras el fundido del temporizador de
+    // apagado, al reanudar se oiga de inmediato (sin la subida lenta de
+    // setTargetAtTime, que además se congela si el contexto se suspende).
+    resetFade() {
+      if (!this.fadeGain || !this.ctx) return;
+      try {
+        const g = this.fadeGain.gain;
+        const t = this.ctx.currentTime;
+        g.cancelScheduledValues(t);
+        g.setValueAtTime(1, t);
+      } catch (e) { try { this.fadeGain.gain.value = 1; } catch (_) {} }
+    },
+
     _rampNorm() {
       if (!this.normGain || !this.ctx) return;
       let g = 1;
@@ -611,11 +625,13 @@
       if (this.nativeMode) {
         if (!this._audio || !this._audio.src) return;
         await this.resume();
+        this.resetFade();   // garantiza volumen al reanudar tras el temporizador
         try { await this._audio.play(); } catch (e) {}
         return;
       }
       if (!this.buffer) return;
       await this.resume();
+      this.resetFade();     // garantiza volumen al reanudar tras el temporizador
       if (this._playing) return;
       if (this._offset >= this.duration - 0.05) this._offset = 0;
       const o = opts || {};
