@@ -2438,35 +2438,31 @@
 
   let _lastQSave = 0;
   let _lastMediaPush = 0;
+  let _lastDraw = 0;
+  const DRAW_INTERVAL = 1000 / 32;   // ~30 fps para el visualizador (audio sin tocar)
   function raf(now) {
     const t = now || performance.now();
-    // bucle A–B (independiente de si se ven los visuales)
+    // bucle A–B (cada frame)
     abTick();
     if (abModalOpen()) {
       const an = $("#abNow"); if (an) an.textContent = fmtAB(Engine.position());
       const ap = $("#abPlay"); if (ap) ap.classList.toggle("is-on", Engine.playing);
     }
-    // ¿se ven realmente los visuales del reproductor? Si la pantalla está
-    // oculta o hay un modal encima (letras, karaoke, biblioteca…), NO dibujamos:
-    // así liberamos el hilo principal para el audio y evitamos artefactos.
-    // La reproducción, la notificación y el guardado siguen funcionando igual.
-    const visuals = !document.hidden && !document.body.classList.contains("has-modal");
-    if (visuals) { updateReels(t); drawViz(); }
+    // Dibujo del visualizador/bobinas limitado a ~30 fps (constante): reduce el
+    // trabajo de canvas a la mitad sin los cortes del antiguo gateado por modal.
+    const drawNow = (t - _lastDraw) >= DRAW_INTERVAL;
+    if (drawNow) { _lastDraw = t; updateReels(t); drawViz(); }
     // refrescar la posición de la notificación cada ~4s mientras suena
     if (Engine.playing && t - _lastMediaPush > 4000) { _lastMediaPush = t; try { pushMediaState(true); } catch (e) {} }
     tickEndOfTrackFade();
     if (playerOnlyMode) {
       // modo reproductor: no hay buffer; actualizar tiempo y barra de seek
-      if (visuals) {
-        $("#timeCur").textContent = fmt.time(Engine.position());
-        if (typeof window.__poUpdate === "function") window.__poUpdate();
-      }
+      $("#timeCur").textContent = fmt.time(Engine.position());
+      if (typeof window.__poUpdate === "function") window.__poUpdate();
       if (Engine.playing && t - _lastQSave > 3000) { _lastQSave = t; saveQueue(); }
     } else if (Engine.buffer) {
-      if (visuals) {
-        drawWave();
-        $("#timeCur").textContent = fmt.time(Engine.position());
-      }
+      if (drawNow) drawWave();
+      $("#timeCur").textContent = fmt.time(Engine.position());
       // persistir posición de la cola cada ~3s mientras suena
       if (Engine.playing && t - _lastQSave > 3000) { _lastQSave = t; saveQueue(); }
     }
