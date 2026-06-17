@@ -797,8 +797,8 @@
     if (abSnap) t = abSnapPeak(t);
     return Math.max(0, dur ? Math.min(t, dur) : t);
   }
-  function abSetA() { if (!abLoaded()) return; ab.a = abPlace(Engine.position() || 0); if (ab.b != null && ab.b <= ab.a) ab.b = null; abRefresh(); abZoom(); }
-  function abSetB() { if (!abLoaded()) return; const p = abPlace(Engine.position() || 0); if (ab.a == null) ab.a = 0; if (p <= ab.a) return; ab.b = p; abRefresh(); abZoom(); }
+  function abSetA(raw) { if (!abLoaded()) return; ab.a = abPlace(raw != null ? raw : (Engine.position() || 0)); if (ab.b != null && ab.b <= ab.a) ab.b = null; abRefresh(); abZoom(); }
+  function abSetB(raw) { if (!abLoaded()) return; const p = abPlace(raw != null ? raw : (Engine.position() || 0)); if (ab.a == null) ab.a = 0; if (p <= ab.a) return; ab.b = p; abRefresh(); abZoom(); }
   // mueve la selección entera (mantiene la duración) por su propia longitud:
   // navegar entre "compases" hacia delante/atrás
   function abMove(dir) {
@@ -1901,8 +1901,14 @@
       ["pointerup", "pointercancel", "pointerleave"].forEach((ev) => btn.addEventListener(ev, clear));
     })();
     const abBind = (id, fn) => { const b = $("#" + id); if (b) b.addEventListener("click", fn); };
-    abBind("abSetA", abSetA);
-    abBind("abSetB", abSetB);
+    // SET A/B captura el instante EXACTO del toque (pointerdown), no al soltar:
+    // mayor precisión al marcar a oído.
+    const abBindSet = (id, fn) => {
+      const b = $("#" + id); if (!b) return;
+      b.addEventListener("pointerdown", (e) => { fn(Engine.position() || 0); e.preventDefault(); });
+    };
+    abBindSet("abSetA", abSetA);
+    abBindSet("abSetB", abSetB);
     abBind("abAMinus", () => abNudge("a", -abStep));
     abBind("abAPlus", () => abNudge("a", abStep));
     abBind("abBMinus", () => abNudge("b", -abStep));
