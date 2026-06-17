@@ -11,8 +11,8 @@ android {
         applicationId = "com.dskmusic.dsklofi"
         minSdk = 24
         targetSdk = 35
-        versionCode = 27
-        versionName = "1.27"
+        versionCode = 28
+        versionName = "1.28"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
