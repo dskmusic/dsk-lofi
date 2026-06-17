@@ -800,9 +800,15 @@
       <button class="ab-step__chip" type="button" data-xf="0.025">25ms</button>
       <button class="ab-step__chip" type="button" data-xf="0.05">50ms</button>
     </div>
-    <div class="ab-step" id="abCaptureRow">
+    <div class="ab-step" id="abReactSel">
+      <span class="ab-step__lbl" data-i18n="ab_react">Reaction</span>
+      <button class="ab-step__chip" type="button" data-react="0" data-i18n="ab_off">Off</button>
+      <button class="ab-step__chip" type="button" data-react="80">80ms</button>
+      <button class="ab-step__chip" type="button" data-react="150">150ms</button>
+      <button class="ab-step__chip" type="button" data-react="250">250ms</button>
+    </div>
+    <div class="ab-step" id="abSnapRow">
       <span class="ab-step__lbl" data-i18n="ab_capture">Capture</span>
-      <button class="ab-step__chip" id="abCompChip" type="button" data-i18n="ab_comp">Latency</button>
       <button class="ab-step__chip" id="abSnapChip" type="button" data-i18n="ab_snap">Snap to peak</button>
     </div>
     <div class="ab-export">

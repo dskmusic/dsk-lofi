@@ -716,9 +716,9 @@
   let abXfade = 0.04;           // crossfade del salto del loop (s), 0 = corte seco
   try { const v = parseFloat(localStorage.getItem("dsklofi.abxfade")); if (v >= 0) abXfade = v; } catch (e) {}
   let _abDip = false;           // estado del fundido de salida del loop
-  let abComp = false;           // compensar latencia al fijar A/B en directo
+  let abReact = 0;              // compensación de reacción al fijar A/B en directo (ms)
   let abSnap = false;           // ajustar el punto al pico más cercano
-  try { abComp = localStorage.getItem("dsklofi.abcomp") === "1"; } catch (e) {}
+  try { const v = parseInt(localStorage.getItem("dsklofi.abreact"), 10); if (v >= 0) abReact = v; } catch (e) {}
   try { abSnap = localStorage.getItem("dsklofi.absnap") === "1"; } catch (e) {}
   let abTrackKey = null;        // identidad de la pista (para conservar A/B al cambiar de modo)
   let _abHoldFired = false;     // para suprimir el toggle tras la pulsación larga
@@ -773,29 +773,32 @@
     if (card) card.querySelector(".ab-card").classList.toggle("ab-card--on", abActive());
   }
   function abReset() { ab.on = false; ab.a = null; ab.b = null; abRefresh(); abZoom(); }
-  // latencia estimada de captura (salida de audio + reacción) al fijar en directo
-  function abLatency() { try { const c = Engine.ctx; return (c ? ((c.outputLatency || 0) + (c.baseLatency || 0)) : 0) + 0.05; } catch (e) { return 0.1; } }
-  // ajusta un instante al pico de amplitud más cercano (±80 ms) si hay onda
+  // latencia de salida de audio (se suma a la reacción humana)
+  function abLatency() { try { const c = Engine.ctx; return c ? ((c.outputLatency || 0) + (c.baseLatency || 0)) : 0; } catch (e) { return 0; } }
+  // ajusta un instante al pico de amplitud cercano (±120 ms) SOLO si está claramente destacado
   function abSnapPeak(t) {
     const buf = Engine.buffer || abPeakBuf; if (!buf) return t;
     const sr = buf.sampleRate, d = buf.getChannelData(0), total = d.length;
-    const win = Math.floor(0.08 * sr);
+    const win = Math.floor(0.12 * sr);
     let c = Math.max(0, Math.min(Math.floor(t * sr), total - 1));
     const s = Math.max(0, c - win), e = Math.min(total, c + win);
-    let bi = c, bv = -1;
-    for (let i = s; i < e; i += 2) { const v = Math.abs(d[i]); if (v > bv) { bv = v; bi = i; } }
+    let bi = c, bv = -1, sum = 0, cnt = 0;
+    for (let i = s; i < e; i += 2) { const v = Math.abs(d[i]); sum += v; cnt++; if (v > bv) { bv = v; bi = i; } }
+    const mean = cnt ? sum / cnt : 0;
+    if (bv < 0.06 || bv < mean * 1.8) return t;   // sin pico claro → no mover
     return bi / sr;
   }
-  // aplica compensación de latencia (solo en directo) y/o ajuste al pico
-  function abPlace(raw, isA) {
+  // aplica compensación de reacción (solo en directo) y/o ajuste al pico.
+  // A y B se desplazan IGUAL hacia atrás (marcas lo que acabas de oír).
+  function abPlace(raw) {
     const dur = abViewDur() || abDur() || 0;
     let t = raw;
-    if (abComp && Engine.playing) t += isA ? -abLatency() : abLatency();   // A antes, B después
+    if (abReact > 0 && Engine.playing) t -= (abReact / 1000 + abLatency());
     if (abSnap) t = abSnapPeak(t);
     return Math.max(0, dur ? Math.min(t, dur) : t);
   }
-  function abSetA() { if (!abLoaded()) return; ab.a = abPlace(Engine.position() || 0, true); if (ab.b != null && ab.b <= ab.a) ab.b = null; abRefresh(); abZoom(); }
-  function abSetB() { if (!abLoaded()) return; const p = abPlace(Engine.position() || 0, false); if (ab.a == null) ab.a = 0; if (p <= ab.a) return; ab.b = p; abRefresh(); abZoom(); }
+  function abSetA() { if (!abLoaded()) return; ab.a = abPlace(Engine.position() || 0); if (ab.b != null && ab.b <= ab.a) ab.b = null; abRefresh(); abZoom(); }
+  function abSetB() { if (!abLoaded()) return; const p = abPlace(Engine.position() || 0); if (ab.a == null) ab.a = 0; if (p <= ab.a) return; ab.b = p; abRefresh(); abZoom(); }
   function abNudge(which, delta) {
     const dur = abViewDur();
     if (which === "a") {
@@ -812,7 +815,7 @@
   function abModalOpen() { const m = $("#abModal"); return !!(m && m.classList.contains("modal--open")); }
   function openAbModal() {
     abPeakBuf = Engine.buffer || abPeakBuf;
-    abZoom(); abRefresh(); syncAbStepUI(); syncAbXfadeUI(); syncAbReps(); syncAbToggles();
+    abZoom(); abRefresh(); syncAbStepUI(); syncAbXfadeUI(); syncAbReps(); syncAbReactUI(); syncAbToggles();
     const ap = $("#abPlay");
     if (ap) ap.innerHTML = Engine.playing ? SVG_PAUSE_SM : SVG_PLAY_SM;
     UI.openModal("abModal");
@@ -1005,12 +1008,13 @@
     });
   }
   let abRepsVal = 2;
-  function setAbComp(v) { abComp = !!v; try { localStorage.setItem("dsklofi.abcomp", abComp ? "1" : "0"); } catch (e) {} syncAbToggles(); }
-  function setAbSnap(v) { abSnap = !!v; try { localStorage.setItem("dsklofi.absnap", abSnap ? "1" : "0"); } catch (e) {} syncAbToggles(); }
-  function syncAbToggles() {
-    const c = $("#abCompChip"); if (c) c.classList.toggle("is-on", abComp);
-    const s = $("#abSnapChip"); if (s) s.classList.toggle("is-on", abSnap);
+  function setAbReact(ms) { abReact = Math.max(0, ms | 0); try { localStorage.setItem("dsklofi.abreact", String(abReact)); } catch (e) {} syncAbReactUI(); }
+  function syncAbReactUI() {
+    const wrap = $("#abReactSel"); if (!wrap) return;
+    wrap.querySelectorAll("[data-react]").forEach((b) => { b.classList.toggle("is-on", parseInt(b.getAttribute("data-react"), 10) === abReact); });
   }
+  function setAbSnap(v) { abSnap = !!v; try { localStorage.setItem("dsklofi.absnap", abSnap ? "1" : "0"); } catch (e) {} syncAbToggles(); }
+  function syncAbToggles() { const s = $("#abSnapChip"); if (s) s.classList.toggle("is-on", abSnap); }
   function syncAbReps() {
     const wrap = $("#abReps"); if (!wrap) return;
     let matched = false;
@@ -1865,7 +1869,7 @@
     { const rs = $("#abReps"); if (rs) rs.addEventListener("click", (e) => { const b = e.target.closest("[data-reps]"); if (b) { abRepsVal = parseInt(b.getAttribute("data-reps"), 10); const ci = $("#abRepsCustom"); if (ci) ci.value = ""; syncAbReps(); } }); }
     { const ci = $("#abRepsCustom"); if (ci) ci.addEventListener("input", () => { const v = parseInt(ci.value, 10); if (v >= 1) { abRepsVal = Math.min(64, v); syncAbReps(); } }); }
     abBind("abExportBtn", () => exportLoop(abRepsVal));
-    abBind("abCompChip", () => setAbComp(!abComp));
+    { const rr = $("#abReactSel"); if (rr) rr.addEventListener("click", (e) => { const b = e.target.closest("[data-react]"); if (b) setAbReact(parseInt(b.getAttribute("data-react"), 10)); }); }
     abBind("abSnapChip", () => setAbSnap(!abSnap));
     abInitWave();
     abBind("abPlay", async () => {
