@@ -6,7 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       force_build:
-        description: 'Forzar compilación y release aunque no haya cambios en NewPipeExtractor'
+        description: 'Forzar compilación y release aunque no haya cambios en NewPipeExtractor (sigue comprobando y actualiza si hay versión nueva)'
+        type: boolean
+        default: false
+      skip_check:
+        description: 'Compilar y publicar SIN comprobar NewPipeExtractor (usa la versión actual del repo)'
         type: boolean
         default: false
 
@@ -25,6 +29,23 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          CURRENT=$(grep -E '^newpipe[[:space:]]*=[[:space:]]*"' gradle/libs.versions.toml | head -n1 | sed -E 's/.*"([^"]*)".*/\1/')
+
+          # Opción manual 2: compilar SIN comprobar NewPipeExtractor
+          if [ "${{ github.event.inputs.skip_check }}" == "true" ]; then
+            echo "Build manual SIN comprobar NewPipeExtractor. Se usa la versión actual del repo ($CURRENT)."
+            echo "latest=$CURRENT" >> "$GITHUB_OUTPUT"
+            echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            if [ -f version.json ]; then
+              echo "first_run=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "first_run=true" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
           RESPONSE=$(curl -sf -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases/latest)
           if [ -z "$RESPONSE" ]; then
             echo "Error: no se pudo consultar la API de GitHub" >&2
@@ -35,7 +56,6 @@ jobs:
             echo "Error: respuesta sin tag_name: $RESPONSE" >&2
             exit 1
           fi
-          CURRENT=$(grep -E '^newpipe[[:space:]]*=[[:space:]]*"' gradle/libs.versions.toml | head -n1 | sed -E 's/.*"([^"]*)".*/\1/')
           echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
           echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
           if [ "$LATEST" == "$CURRENT" ]; then
@@ -58,7 +78,7 @@ jobs:
         if: steps.newpipe.outputs.should_build == 'false'
         run: echo "NewPipeExtractor sin cambios (${{ steps.newpipe.outputs.current }}) y version.json ya existe. Nada que hacer."
 
-      # --- A partir de aquí solo se ejecuta si hay versión nueva o es la primera vez ---
+      # --- A partir de aquí solo se ejecuta si hay versión nueva, es la primera vez o build manual ---
 
       - name: Actualizar libs.versions.toml
         if: steps.newpipe.outputs.should_build == 'true' && steps.newpipe.outputs.changed == 'true'
