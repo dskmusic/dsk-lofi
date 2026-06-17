@@ -537,6 +537,16 @@
       } catch (e) { try { this.fadeGain.gain.value = 1; } catch (_) {} }
     },
 
+    // Fundido de salida corto que se PUEDE esperar (para cambiar de pista sin clic).
+    fadeOutNow(secs) {
+      return new Promise((resolve) => {
+        if (!this.fadeGain || !this.ctx) { resolve(); return; }
+        try { clearTimeout(this._fadeRestoreTO); } catch (e) {}
+        try { this.fadeRampTo(0, secs || 0.04); } catch (e) {}
+        setTimeout(resolve, Math.max(20, (secs || 0.04) * 1000) + 10);
+      });
+    },
+
     // Rampa lineal del fundido de salida hasta 'target' en 'secs' (para suavizar
     // el salto del loop A–B y evitar clicks).
     fadeRampTo(target, secs) {
@@ -644,6 +654,7 @@
     async play(opts) {
       if (this.nativeMode) {
         if (!this._audio || !this._audio.src) return;
+        try { clearTimeout(this._fadeRestoreTO); } catch (e) {}   // anula el restaurado pendiente de pause/stop
         await this.resume();
         const a = this._audio;
         try { const g = this.fadeGain.gain, t = this.ctx.currentTime; g.cancelScheduledValues(t); g.setValueAtTime(0.0001, t); } catch (e) {}   // mudo ANTES de arrancar
@@ -717,12 +728,20 @@
         const a = this._audio;
         if (a) {
           try {
-            this.fadeRampTo(0, 0.05);   // fundido de salida anti-click
+            try { clearTimeout(this._fadeRestoreTO); } catch (e) {}
+            this.fadeRampTo(0, 0.06);   // fundido de salida anti-click
             return new Promise((resolve) => setTimeout(() => {
               try { a.pause(); } catch (e) {}
-              try { this.resetFade(); } catch (e) {}
+              // NO subimos la ganancia ya: el elemento aún puede soltar restos.
+              // La restauramos tarde y solo si sigue en pausa (evita clic y deja
+              // el volumen listo para cambiar de modo). Se cancela si vuelve a play.
+              try {
+                this._fadeRestoreTO = setTimeout(() => {
+                  if (this._audio && this._audio.paused) { try { this.resetFade(); } catch (e) {} }
+                }, 220);
+              } catch (e) { try { this.resetFade(); } catch (_) {} }
               resolve();
-            }, 70));
+            }, 80));
           } catch (e) { try { a.pause(); } catch (_) {} }
         }
         return Promise.resolve();
@@ -783,9 +802,12 @@
 
     stop() {
       if (this.nativeMode) {
-        try { const g = this.fadeGain.gain, t = this.ctx.currentTime; g.cancelScheduledValues(t); g.setValueAtTime(0.0001, t); } catch (e) {}   // mudo antes del corte (anti-click al cambiar de pista)
+        try { clearTimeout(this._fadeRestoreTO); } catch (e) {}
+        try { const g = this.fadeGain.gain, t = this.ctx.currentTime; g.cancelScheduledValues(t); g.setValueAtTime(0.0001, t); } catch (e) {}   // mudo antes del corte (anti-click)
         if (this._audio) { try { this._audio.pause(); this._audio.currentTime = 0; } catch (e) {} }
         this._offset = 0;
+        // restaurar ganancia tarde y solo si sigue parado (para no dejar mudo otro modo)
+        try { this._fadeRestoreTO = setTimeout(() => { if (this._audio && this._audio.paused) { try { this.resetFade(); } catch (e) {} } }, 220); } catch (e) {}
         document.dispatchEvent(new CustomEvent("dsk:stopped"));
         return;
       }

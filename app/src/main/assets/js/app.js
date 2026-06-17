@@ -1649,6 +1649,9 @@
 
   async function loadFile(track, autoplay, prepareOnly) {
     if (!track) return;
+    // si hay una pista sonando en modo reproductor, fundir antes de cambiar
+    // (el salto natural ya viene en silencio; el manual con botones no).
+    if (!prepareOnly && Engine.nativeMode && Engine.playing) { try { await Engine.fadeOutNow(0.04); } catch (e) {} }
     // A–B se conserva si es la MISMA pista (p. ej. al cambiar de modo); solo se
     // borra al cambiar realmente de pista.
     const _tk = (track.uri || (track.ytId ? "yt:" + track.ytId : (typeof track.nativeIndex === "number" ? "ni:" + track.nativeIndex : "nm:" + (track.name || ""))));
@@ -3499,7 +3502,7 @@
     nativeAudio.addEventListener("ended", () => {
       if (!playerOnlyMode) return;
       if (endOfTrackTimer) { endOfTrackTimer = false; updateTimerBadge(); setPlayIcon(false); if (_eotFading) { setOutputVolumeFactor(1); _eotFading = false; } return; }
-      if (Engine.loop) { nativeAudio.currentTime = 0; nativeAudio.play(); }
+      if (Engine.loop) { nativeAudio.currentTime = 0; Engine.play(); }
       else advanceOnEnd();
     });
     // El stream/archivo de la pista actual ya no existe o no se puede leer
