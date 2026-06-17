@@ -545,7 +545,8 @@
       list.innerHTML = "";
       updateExplorerToolbar();
       if (!roots.length) { list.innerHTML = '<div class="lib-empty">' + T("ex_no_roots") + "</div>"; return; }
-      roots.forEach((r) => list.appendChild(rootRow(r)));
+      const ordered = sortRootsByOrder(roots);
+      ordered.forEach((r, i) => list.appendChild(rootRow(r, i, ordered.length)));
       list.scrollTop = keep;
       return;
     }
@@ -701,16 +702,44 @@
     if (!name) return name;
     return name.length > max ? name.slice(0, max) + "…" : name;
   }
-  function rootRow(r) {
+  function rootOrderGet() { try { return JSON.parse(localStorage.getItem("dsklofi.rootOrder") || "[]"); } catch (e) { return []; } }
+  function rootOrderSet(a) { try { localStorage.setItem("dsklofi.rootOrder", JSON.stringify(a)); } catch (e) {} }
+  function sortRootsByOrder(roots) {
+    const ord = rootOrderGet();
+    return roots.slice().sort((a, b) => {
+      let ia = ord.indexOf(a.uri), ib = ord.indexOf(b.uri);
+      if (ia < 0) ia = Infinity; if (ib < 0) ib = Infinity;
+      return ia - ib;
+    });
+  }
+  function moveRoot(uri, dir) {
+    let roots = [];
+    try { roots = JSON.parse(window.DSKBridge.listRoots() || "[]"); } catch (e) {}
+    const sorted = sortRootsByOrder(roots).map((r) => r.uri);
+    const i = sorted.indexOf(uri); if (i < 0) return;
+    const j = i + dir; if (j < 0 || j >= sorted.length) return;
+    const t = sorted[i]; sorted[i] = sorted[j]; sorted[j] = t;
+    rootOrderSet(sorted);
+    renderExplorer();
+  }
+
+  function rootRow(r, idx, count) {
     const row = document.createElement("div");
     row.className = "lib-row lib-row--folder" + (r.pending ? " lib-row--pending" : "");
+    const up = (typeof idx === "number" && idx > 0);
+    const down = (typeof idx === "number" && typeof count === "number" && idx < count - 1);
     row.innerHTML = '<span class="lib-row__ic">' + (r.pending ? IC.relink : IC.folder) + '</span>' +
       '<span class="lib-row__name"></span>' +
       (r.pending ? '<span class="lib-row__sub lib-row__sub--pending">' + T("ex_pending") + '</span>' : '') +
+      '<button class="lib-row__move" data-dir="up" type="button" aria-label="' + T("ex_move_up") + '"' + (up ? '' : ' disabled') + '>&#9650;</button>' +
+      '<button class="lib-row__move" data-dir="down" type="button" aria-label="' + T("ex_move_down") + '"' + (down ? '' : ' disabled') + '>&#9660;</button>' +
       '<button class="lib-row__act" type="button" aria-label="' + T("ex_remove_root") + '">&times;</button>';
     const nameEl = row.querySelector(".lib-row__name");
     nameEl.textContent = r.name;
     nameEl.title = r.pending ? (r.name + " — " + T("ex_pending_hint")) : r.name;
+    row.querySelectorAll(".lib-row__move").forEach((mb) => {
+      mb.addEventListener("click", (e) => { e.stopPropagation(); if (!mb.disabled) moveRoot(r.uri, mb.dataset.dir === "up" ? -1 : 1); });
+    });
     if (r.pending) {
       row.title = T("ex_pending_hint");
       row.addEventListener("click", () => { if (hasBridge("relinkRoot")) window.DSKBridge.relinkRoot(r.uri); });

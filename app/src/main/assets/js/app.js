@@ -4201,22 +4201,41 @@
       markSelected(chosenFile);
     }
 
+    function getTimes() { try { return JSON.parse(localStorage.getItem("dsklofi.stemTimes") || "{}"); } catch (e) { return {}; } }
+    function setTime(file, val) {
+      const t = getTimes();
+      if (val === "" || val == null) delete t[file]; else t[file] = val;
+      try { localStorage.setItem("dsklofi.stemTimes", JSON.stringify(t)); } catch (e) {}
+    }
+
     function buildRow(o) {
       const row = document.createElement("div");
       row.className = "stm-mrow"; row.dataset.file = o.file; row.dataset.label = o.name;
       row.dataset.installed = o.installed ? "1" : "0";
-      // estrella de favorito (a la izquierda), clicable
+
+      // ---- línea 1: favorito + nombre (+ recomendado) + campo de tiempo ----
+      const l1 = document.createElement("div"); l1.className = "stm-mrow__l1";
       const favBtn = document.createElement("button");
       favBtn.type = "button"; favBtn.className = "stm-fav" + (o.fav ? " stm-fav--on" : "");
       favBtn.textContent = o.fav ? "★" : "☆"; favBtn.title = I18n.t("stm_fav");
       favBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleFav(o.file); });
-      row.appendChild(favBtn);
-      const meta = document.createElement("div"); meta.className = "stm-mrow__meta";
+      l1.appendChild(favBtn);
       const nm = document.createElement("div"); nm.className = "stm-mrow__name";
-      nm.innerHTML = o.star ? (o.name + ' <span class="star">★</span>') : o.name;
-      meta.appendChild(nm);
-      if (o.desc) { const d = document.createElement("div"); d.className = "stm-mrow__desc"; d.textContent = o.desc; meta.appendChild(d); }
-      row.appendChild(meta);
+      nm.innerHTML = o.star ? (o.name + ' <span class="star" title="' + I18n.t("stm_recommended") + '">★</span>') : o.name;
+      l1.appendChild(nm);
+      const tin = document.createElement("input");
+      tin.type = "text"; tin.inputMode = "numeric"; tin.className = "stm-time-in";
+      tin.placeholder = I18n.t("stm_time_ph"); tin.value = getTimes()[o.file] || "";
+      tin.title = I18n.t("stm_time_hint");
+      tin.addEventListener("click", (e) => e.stopPropagation());
+      tin.addEventListener("change", () => setTime(o.file, tin.value.trim()));
+      l1.appendChild(tin);
+      row.appendChild(l1);
+
+      // ---- línea 2: descripción + estado/botones ----
+      const l2 = document.createElement("div"); l2.className = "stm-mrow__l2";
+      const desc = document.createElement("div"); desc.className = "stm-mrow__desc"; desc.textContent = o.desc || "";
+      l2.appendChild(desc);
       const right = document.createElement("div"); right.className = "stm-mrow__right";
       if (o.installed) {
         const b = document.createElement("span"); b.className = "stm-badge stm-badge--ok"; b.textContent = I18n.t("stm_installed"); right.appendChild(b);
@@ -4228,7 +4247,9 @@
         dl.addEventListener("click", (e) => { e.stopPropagation(); startDownload(o.file, o.urls, row); });
         right.appendChild(dl);
       }
-      row.appendChild(right);
+      l2.appendChild(right);
+      row.appendChild(l2);
+
       row.addEventListener("click", () => { if (row.dataset.installed === "1") { setChosen(row.dataset.file, row.dataset.label); markSelected(row.dataset.file); togglePanel(false); } });
       return row;
     }
