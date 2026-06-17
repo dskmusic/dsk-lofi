@@ -870,6 +870,7 @@
   let abDrag = null;                 // "a" | "b" | null  (arrastre de un punto ya fijado)
   const abPtrs = new Map();          // pointerId -> {x,y,sx,sy}
   let abPinch = null;                // {d0, span0, midTime}
+  let abPan = null;                  // {sx, start0, span0} paneo con un dedo
   const abClamp = (v, a, b) => Math.max(a, Math.min(v, b));
   function abZoom() {
     const dur = abViewDur();
@@ -961,19 +962,19 @@
         const r = abWaveC.getBoundingClientRect();
         const midF = abClamp(((p[0].x + p[1].x) / 2 - r.left) / (r.width || 1), 0, 1);
         abPinch = { d0: d0, span0: (abView.end - abView.start) || 1, midTime: abView.start + midF * ((abView.end - abView.start) || 1) };
-        abDrag = null;
+        abDrag = null; abPan = null;
         e.preventDefault(); return;
       }
-      // un dedo: solo iniciar arrastre si está cerca de un punto YA fijado
+      // un dedo: arrastrar A/B si está cerca de un punto, si no PANEAR la onda
       if (!abPeakReady()) return;
       const r = abWaveC.getBoundingClientRect();
       const px = e.clientX - r.left;
       const aPx = ab.a != null ? (ab.a - abView.start) / ((abView.end - abView.start) || 1) * r.width : -1e9;
       const bPx = ab.b != null ? (ab.b - abView.start) / ((abView.end - abView.start) || 1) * r.width : -1e9;
       const dA = Math.abs(px - aPx), dB = Math.abs(px - bPx);
-      if (ab.a != null && dA <= HANDLE_TH && dA <= dB) abDrag = "a";
-      else if (ab.b != null && dB <= HANDLE_TH) abDrag = "b";
-      else abDrag = null;          // lejos de A/B → será un toque (seek) al soltar
+      if (ab.a != null && dA <= HANDLE_TH && dA <= dB) { abDrag = "a"; abPan = null; }
+      else if (ab.b != null && dB <= HANDLE_TH) { abDrag = "b"; abPan = null; }
+      else { abDrag = null; abPan = { sx: e.clientX, start0: abView.start, span0: (abView.end - abView.start) || 1 }; }   // lejos de A/B → paneo / toque
     };
     const onMove = (e) => {
       const p = abPtrs.get(e.pointerId); if (p) { p.x = e.clientX; p.y = e.clientY; }
@@ -995,6 +996,15 @@
         else ab.b = abClamp(tt, ab.a != null ? ab.a + 0.05 : 0, dur);
         abRefresh();
         e.preventDefault();
+        return;
+      }
+      if (abPan) {                              // paneo horizontal de la onda
+        const r = abWaveC.getBoundingClientRect();
+        const dur = abViewDur();
+        const dt = ((e.clientX - abPan.sx) / (r.width || 1)) * abPan.span0;
+        let start = abClamp(abPan.start0 - dt, 0, Math.max(0, (dur || abPan.span0) - abPan.span0));
+        abView = { start: start, end: start + abPan.span0 }; abWaveKey = "";
+        e.preventDefault();
       }
     };
     const onUp = (e) => {
@@ -1002,16 +1012,17 @@
       const moved = p ? (Math.abs(p.x - p.sx) + Math.abs(p.y - p.sy)) : 999;
       abPtrs.delete(e.pointerId);
       if (abPinch && abPtrs.size < 2) abPinch = null;
-      if (abDrag) { abDrag = null; return; }
-      // toque simple (un dedo, sin moverse, lejos de A/B) → seek
-      if (abPtrs.size === 0 && !abPinch && moved < 8 && abPeakReady()) {
+      if (abDrag) { abDrag = null; abPan = null; return; }
+      const wasPan = !!abPan; abPan = null;
+      // toque simple (un dedo, sin apenas moverse) → seek; si paneó, no.
+      if (wasPan && abPtrs.size === 0 && !abPinch && moved < 8 && abPeakReady()) {
         DSKControls.seek(abClamp(abXToTime(e.clientX), 0, abViewDur()));
       }
     };
     abWaveC.addEventListener("pointerdown", onDown);
     abWaveC.addEventListener("pointermove", onMove);
     abWaveC.addEventListener("pointerup", onUp);
-    abWaveC.addEventListener("pointercancel", (e) => { abPtrs.delete(e.pointerId); abDrag = null; abPinch = null; });
+    abWaveC.addEventListener("pointercancel", (e) => { abPtrs.delete(e.pointerId); abDrag = null; abPinch = null; abPan = null; });
   }
   // selector de paso −/+ (0.01 / 0.1 / 0.5 s)
   function setAbStep(v) { abStep = v; try { localStorage.setItem("dsklofi.abstep", String(v)); } catch (e) {} syncAbStepUI(); }
