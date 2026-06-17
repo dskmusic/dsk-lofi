@@ -1703,8 +1703,47 @@
     if (btnMode) btnMode.addEventListener("click", () => { requestMode(!playerOnlyMode); });
 
     /* prev / next / stop */
-    $("#btnPrev").addEventListener("click", () => { if (playlist.length) gotoPrev(); });
-    $("#btnNext").addEventListener("click", () => { if (playlist.length) gotoNext(); });
+    // Toque corto = pista anterior/siguiente. Mantener pulsado = retroceder/
+    // avanzar dentro de la pista actual (tipo << / >>), con aceleración.
+    function attachHoldSeek(btn, dir, shortAction) {
+      if (!btn) return;
+      let holdTimer = 0, stepTimer = 0, didSeek = false, accel = 0;
+      const HOLD = 350, TICK = 220, BASE = 5;
+      const loaded = () => playerOnlyMode ? !!nativeAudio.src : !!Engine.buffer;
+      const curDur = () => (curDurationOverride > 0 ? curDurationOverride : (Engine.duration || 0));
+      function stepOnce() {
+        if (!loaded()) return;
+        const dur = curDur(); if (dur <= 0) return;
+        accel++;
+        const step = BASE + Math.min(15, Math.floor(accel / 4) * 5); // 5→10→15→20s
+        let target = (Engine.position() || 0) + dir * step;
+        target = Math.max(0, Math.min(target, Math.max(0, dur - 0.25)));
+        DSKControls.seek(target);
+      }
+      function stop() {
+        if (holdTimer) { clearTimeout(holdTimer); holdTimer = 0; }
+        if (stepTimer) { clearInterval(stepTimer); stepTimer = 0; }
+      }
+      btn.addEventListener("pointerdown", () => {
+        if (!playlist.length) return;
+        stop(); didSeek = false; accel = 0;
+        holdTimer = setTimeout(() => {
+          holdTimer = 0; didSeek = true;
+          stepOnce(); stepTimer = setInterval(stepOnce, TICK);
+          try { if (navigator.vibrate) navigator.vibrate(10); } catch (e) {}
+        }, HOLD);
+      });
+      const end = () => stop();
+      btn.addEventListener("pointerup", end);
+      btn.addEventListener("pointercancel", end);
+      btn.addEventListener("pointerleave", end);
+      btn.addEventListener("click", (e) => {
+        if (didSeek) { didSeek = false; e.preventDefault(); e.stopPropagation(); return; }
+        shortAction();
+      });
+    }
+    attachHoldSeek($("#btnPrev"), -1, () => { if (playlist.length) gotoPrev(); });
+    attachHoldSeek($("#btnNext"), +1, () => { if (playlist.length) gotoNext(); });
     $("#btnStop").addEventListener("click", async () => {
       const wasPlaying = Engine.playing;
       // actualizar icono SIN re-notificar al servicio (evita rearrancarlo)
