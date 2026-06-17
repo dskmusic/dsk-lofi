@@ -645,8 +645,20 @@
       if (this.nativeMode) {
         if (!this._audio || !this._audio.src) return;
         await this.resume();
-        this.resetFade();   // garantiza volumen al reanudar tras el temporizador
-        try { await this._audio.play(); } catch (e) {}
+        const a = this._audio;
+        try { const g = this.fadeGain.gain, t = this.ctx.currentTime; g.cancelScheduledValues(t); g.setValueAtTime(0.0001, t); } catch (e) {}   // mudo ANTES de arrancar
+        try { await a.play(); } catch (e) {}
+        // subir el volumen SOLO cuando el elemento ya está sonando de verdad
+        // (así el transitorio pausado->sonando pasa en silencio). Con fallback.
+        let lifted = false;
+        const lift = () => {
+          if (lifted) return; lifted = true;
+          try { a.removeEventListener("playing", onPlaying); } catch (e) {}
+          try { this.fadeFromZero(0.05); } catch (e) { this.resetFade(); }
+        };
+        const onPlaying = () => setTimeout(lift, 24);
+        try { a.addEventListener("playing", onPlaying, { once: true }); } catch (e) {}
+        setTimeout(lift, 140);   // por si 'playing' no llega (ya estaba sonando)
         return;
       }
       if (!this.buffer) return;
@@ -679,7 +691,8 @@
       } else {
         const vol = this.chain.volume.gain;
         vol.cancelScheduledValues(t);
-        vol.setValueAtTime(this.params.output.volume, t);
+        vol.setValueAtTime(0, t);
+        vol.linearRampToValueAtTime(this.params.output.volume, t + 0.012);   // entrada corta anti-click
       }
 
       src.start(0, this._offset);
@@ -701,7 +714,17 @@
     // Devuelve una promesa que resuelve cuando el source ya está muerto.
     pause() {
       if (this.nativeMode) {
-        if (this._audio) { try { this._audio.pause(); } catch (e) {} }
+        const a = this._audio;
+        if (a) {
+          try {
+            this.fadeRampTo(0, 0.05);   // fundido de salida anti-click
+            return new Promise((resolve) => setTimeout(() => {
+              try { a.pause(); } catch (e) {}
+              try { this.resetFade(); } catch (e) {}
+              resolve();
+            }, 70));
+          } catch (e) { try { a.pause(); } catch (_) {} }
+        }
         return Promise.resolve();
       }
       if (!this._playing) return Promise.resolve();
@@ -760,6 +783,7 @@
 
     stop() {
       if (this.nativeMode) {
+        try { const g = this.fadeGain.gain, t = this.ctx.currentTime; g.cancelScheduledValues(t); g.setValueAtTime(0.0001, t); } catch (e) {}   // mudo antes del corte (anti-click al cambiar de pista)
         if (this._audio) { try { this._audio.pause(); this._audio.currentTime = 0; } catch (e) {} }
         this._offset = 0;
         document.dispatchEvent(new CustomEvent("dsk:stopped"));

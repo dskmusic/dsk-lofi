@@ -551,8 +551,75 @@
     </div>
 
     <div class="export__row export__row--col" style="margin-top:16px">
+      <button class="btn btn--block" id="voxAdvanced" type="button" data-i18n="vox_advanced">ADVANCED AI REMOVAL</button>
+    </div>
+
+    <div class="export__row export__row--col" style="margin-top:10px">
       <button class="btn btn--ghost btn--block" id="voxReset" type="button" data-i18n="vox_reset">RESET</button>
     </div>
+  </div>
+</div>
+
+<div class="modal" id="stemsModal" aria-hidden="true" role="dialog">
+  <div class="modal__scrim" data-close="stemsModal"></div>
+  <div class="modal__card">
+    <div class="modal__head">
+      <h2 class="modal__title" data-i18n="stm_title">AI VOICE SEPARATION</h2>
+      <button class="icon-btn modal__x" type="button" data-close="stemsModal"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+    </div>
+
+    <p class="stm-intro" id="stmIntro" data-i18n="stm_intro">Separates the track into vocals and instrumental with an AI model. Processing happens once per track and is cached.</p>
+
+    <div class="export__row export__row--col" id="stmModelRow" style="margin-top:12px">
+      <span class="param__label" data-i18n="stm_model">MODELO</span>
+      <button type="button" class="stm-modelbtn" id="stmModelBtn">
+        <span class="stm-modelbtn__name" id="stmModelCur">—</span>
+        <span class="stm-modelbtn__chev">▾</span>
+      </button>
+      <div class="stm-modelpanel" id="stmModelPanel" hidden></div>
+      <input type="hidden" id="stmModel" value="">
+    </div>
+
+    <div class="stm-cached" id="stmCached" hidden="hidden">
+      <span class="stm-badge" data-i18n="stm_cached">Already separated</span>
+    </div>
+
+    <div class="export__row export__row--col" style="margin-top:14px">
+      <span class="param__label" data-i18n="stm_save">WHAT TO SAVE</span>
+      <div class="stm-checks" id="stmSave">
+        <label class="stm-check"><input type="checkbox" id="stmSaveInst" checked="checked"><span data-i18n="stm_instrumental">Instrumental</span></label>
+        <label class="stm-check"><input type="checkbox" id="stmSaveVox" checked="checked"><span data-i18n="stm_vocals">Vocals</span></label>
+      </div>
+    </div>
+
+    <div class="export__row export__row--col" style="margin-top:14px">
+      <span class="param__label" data-i18n="stm_open">OPEN WHEN DONE</span>
+      <div class="timer-opts" id="stmOpen">
+        <button class="chip chip--active" type="button" data-open="instrumental" data-i18n="stm_instrumental">Instrumental</button>
+        <button class="chip" type="button" data-open="vocals" data-i18n="stm_vocals">Vocals</button>
+        <button class="chip" type="button" data-open="none" data-i18n="stm_keep">Keep current</button>
+      </div>
+    </div>
+
+    <div class="stm-progress" id="stmProgress" hidden="hidden">
+      <div class="stm-bar"><div class="stm-bar__fill" id="stmBar"></div></div>
+      <div class="stm-prow"><span class="stm-stage" id="stmStage">—</span><span class="stm-pct" id="stmPct">0%</span></div>
+    </div>
+
+    <div class="export__row export__row--col" style="margin-top:16px">
+      <button class="btn btn--success btn--block" id="stmRun" type="button" data-i18n="stm_run">SEPARATE</button>
+    </div>
+
+    <div class="stm-result" id="stmResult" hidden="hidden">
+      <span class="param__label" data-i18n="stm_loadstem">LOAD A STEM</span>
+      <div class="timer-opts" style="margin-top:8px">
+        <button class="chip" type="button" id="stmLoadInst" data-i18n="stm_instrumental">Instrumental</button>
+        <button class="chip" type="button" id="stmLoadVox" data-i18n="stm_vocals">Vocals</button>
+        <button class="chip" type="button" id="stmLoadOrig" data-i18n="stm_original">Original</button>
+      </div>
+    </div>
+
+    <p class="ab-hint" id="stmNote" data-i18n="stm_note">Tip: load the instrumental for real karaoke. Your lo-fi effects still apply on top.</p>
   </div>
 </div>
 

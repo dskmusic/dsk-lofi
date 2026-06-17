@@ -549,6 +549,7 @@ class MainActivity : Activity() {
         webView.addJavascriptInterface(ytBridge, "DSKYoutube")
         webView.addJavascriptInterface(DownloadsBridge(), "DSKDownloads")
         webView.addJavascriptInterface(UpdateChecker(this), "DSKUpdate")
+        webView.addJavascriptInterface(StemsBridge(this, webView), "DSKStemsBridge")
     }
 
     private fun injectFileInputFix() {
@@ -1357,7 +1358,7 @@ class MainActivity : Activity() {
                 try {
                     val isTree = !uri.toString().contains("/document/")
                     val parentId = if (isTree) DocumentsContract.getTreeDocumentId(uri)
-                                   else DocumentsContract.getDocumentId(uri)
+                    else DocumentsContract.getDocumentId(uri)
                     val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(uri, parentId)
                     val audioUris = ArrayList<Uri>()
                     contentResolver.query(

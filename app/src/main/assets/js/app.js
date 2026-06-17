@@ -2041,6 +2041,7 @@
     document.addEventListener("dsk:karaoke", syncVoiceBtn);
     syncVoiceBtn();
     initVoiceModal();
+    try { Stems.init(); } catch (e) {}
     $$("#speedPresets .chip").forEach((c) => {
       c.addEventListener("click", () => setSpeedVal(parseFloat(c.getAttribute("data-spd"))));
     });
@@ -4029,6 +4030,329 @@
     catch (e) { return Object.assign({}, VOX_DEFAULTS); }
   }
   function saveVoxParams(p) { try { localStorage.setItem(VOX_LS, JSON.stringify(p)); } catch (e) {} }
+
+  /* ============================ STEMS (IA) ============================
+     Separación de voz/instrumental con modelo nativo (ONNX). El proceso es
+     offline (una vez por pista) y se cachea. Contrato con el bridge nativo:
+       window.DSKBridge.stemsSeparate(optsJson)  -> inicia el trabajo
+       window.DSKBridge.stemsCancel()
+       window.DSKBridge.stemsCached(key) -> "none"|"instrumental"|"vocals"|"both"
+       window.DSKBridge.stemsAvailable() -> bool
+     Callbacks nativo -> JS:
+       window.DSKStemsProgress(pct, stageCode)
+       window.DSKStemsDone(resultJson)   // {key, instrumental, vocals}
+       window.DSKStemsError(codeOrMsg)
+  ============================================================================ */
+  const Stems = (function () {
+    let running = false;
+    let openChoice = "instrumental";   // qué abrir al terminar
+    let last = null;                   // último resultado {key, instrumental, vocals}
+
+    function bridge() { return (typeof window.DSKStemsBridge !== "undefined") ? window.DSKStemsBridge : null; }
+    function available() { const b = bridge(); return !!(b && typeof b.separate === "function"); }
+
+    function curTrack() { return playlist[plIndex] || null; }
+    function curKey() {
+      const t = curTrack(); if (!t) return null;
+      return (t.uri || (t.ytId ? "yt:" + t.ytId : (typeof t.nativeIndex === "number" ? "ni:" + t.nativeIndex : "nm:" + (t.name || ""))));
+    }
+    function curName() { const t = curTrack(); return (t && (t.name || t.title)) || "track"; }
+
+    function stageLabel(code) {
+      const map = { download: "stm_stage_download", decode: "stm_stage_decode", stft: "stm_stage_stft", infer: "stm_stage_infer", recon: "stm_stage_recon", save: "stm_stage_save" };
+      return map[code] ? I18n.t(map[code]) : (code || "");
+    }
+    function setProgress(pct, stage) {
+      if (cancelReq) return;
+      const bar = $("#stmBar"), p = $("#stmPct"), s = $("#stmStage");
+      if (bar) bar.style.width = Math.max(0, Math.min(100, Math.round(pct))) + "%";
+      if (p) p.textContent = Math.round(pct) + "%";
+      if (s) s.textContent = stageLabel(stage);
+    }
+    function showProgress(on) { const el = $("#stmProgress"); if (el) el.hidden = !on; }
+    let cancelReq = false;
+    function setRunning(on) {
+      running = on;
+      const run = $("#stmRun");
+      if (run) { run.disabled = false; run.textContent = I18n.t(on ? "stm_cancel" : "stm_run"); run.classList.toggle("btn--danger", on); run.classList.toggle("btn--success", !on); }
+      showProgress(on);
+    }
+
+    function chosenModel() { const s = $("#stmModel"); return s ? (s.value || "") : ""; }
+
+    // Catálogo curado (se descargan a /DSKlofi/models). Mantén los nombres de fichero.
+    const MODEL_BASE = "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/";
+    const HF_SEANGHAY = "https://huggingface.co/seanghay/uvr_models/resolve/main/";
+    const HF_POLITREES = "https://huggingface.co/Politrees/UVR_resources/resolve/main/MDXNet_models/";
+    const SEANGHAY_SET = ["UVR-MDX-NET-Inst_1.onnx","UVR-MDX-NET-Inst_2.onnx","UVR-MDX-NET-Inst_3.onnx","UVR-MDX-NET-Inst_HQ_1.onnx","UVR-MDX-NET-Inst_HQ_2.onnx","UVR-MDX-NET-Inst_Main.onnx"];
+    // principal (GitHub) + espejos; el nativo prueba en orden hasta que uno funcione
+    function urlsFor(file) {
+      const list = [MODEL_BASE + file];
+      if (SEANGHAY_SET.indexOf(file) >= 0) list.push(HF_SEANGHAY + file);
+      list.push(HF_POLITREES + file);   // último recurso
+      return list;
+    }
+    const MODEL_CATALOG = [
+      { tier: "stm_tier_fast", items: [
+        { file: "UVR-MDX-NET-Inst_3.onnx",  name: "Inst 3",        desc: "Rápido · buen instrumental", star: true },
+        { file: "UVR-MDX-NET-Inst_2.onnx",  name: "Inst 2",        desc: "Rápido" },
+        { file: "UVR-MDX-NET-Inst_1.onnx",  name: "Inst 1",        desc: "Rápido" },
+        { file: "UVR_MDXNET_3_9662.onnx",   name: "MDXNET 3 (9662)", desc: "Clásico rápido" },
+        { file: "UVR_MDXNET_2_9682.onnx",   name: "MDXNET 2 (9682)", desc: "Clásico · bueno en instrumental" },
+        { file: "UVR_MDXNET_1_9703.onnx",   name: "MDXNET 1 (9703)", desc: "Clásico · bueno en voz" },
+        { file: "UVR_MDXNET_9482.onnx",     name: "MDXNET 9482",   desc: "Clásico rápido" },
+        { file: "UVR_MDXNET_KARA.onnx",     name: "KARA",          desc: "Karaoke: deja coros de fondo" },
+        { file: "UVR_MDXNET_Main.onnx",     name: "MDXNET Main",   desc: "Antiguo" }
+      ]},
+      { tier: "stm_tier_mid", items: [
+        { file: "UVR-MDX-NET-Inst_Main.onnx", name: "Inst Main",   desc: "El más rápido de calidad media" },
+        { file: "UVR-MDX-NET-Inst_HQ_1.onnx", name: "Inst HQ 1",   desc: "Calidad alta" },
+        { file: "UVR-MDX-NET-Inst_HQ_2.onnx", name: "Inst HQ 2",   desc: "Buen equilibrio (recomendado)", star: true }
+      ]}
+    ];
+
+    function stem(file) { return file.replace(/\.onnx$/i, ""); }
+    // ¿hay un fichero instalado que corresponda a este modelo? (admite prefijos)
+    function installedMatch(file, installed) {
+      const s = stem(file).toLowerCase();
+      return installed.find((f) => f.toLowerCase().indexOf(s) >= 0) || null;
+    }
+    function listInstalled() {
+      try { const b = bridge(); if (b && b.listModels) return JSON.parse(b.listModels() || "[]"); } catch (e) {}
+      return [];
+    }
+
+    function setChosen(file, label) {
+      const h = $("#stmModel"); if (h) h.value = file || "";
+      const cur = $("#stmModelCur"); if (cur) cur.textContent = label || I18n.t("stm_model_default");
+      try { localStorage.setItem("dsklofi.stemModel", file || ""); } catch (e) {}
+    }
+
+    function refreshModels() {
+      const panel = $("#stmModelPanel"); if (!panel) return;
+      const installed = listInstalled();
+      let saved = ""; try { saved = localStorage.getItem("dsklofi.stemModel") || ""; } catch (e) {}
+      panel.innerHTML = "";
+      let chosenLabel = null, chosenFile = "";
+
+      const catalogStems = [];
+      MODEL_CATALOG.forEach((group) => {
+        const gl = document.createElement("div"); gl.className = "stm-tierlabel"; gl.textContent = I18n.t(group.tier); panel.appendChild(gl);
+        group.items.forEach((m) => {
+          catalogStems.push(stem(m.file).toLowerCase());
+          const match = installedMatch(m.file, installed);
+          const realName = match || m.file;
+          const row = buildRow({ name: m.name, desc: m.desc, star: m.star, file: realName, urls: urlsFor(m.file), installed: !!match });
+          panel.appendChild(row);
+          if (saved && saved === realName) { chosenLabel = m.name; chosenFile = realName; }
+        });
+      });
+
+      // modelos instalados que NO están en el catálogo (los tuyos con prefijo, etc.)
+      const extras = installed.filter((f) => !catalogStems.some((cs) => f.toLowerCase().indexOf(cs) >= 0));
+      if (extras.length) {
+        const gl = document.createElement("div"); gl.className = "stm-tierlabel"; gl.textContent = I18n.t("stm_tier_yours"); panel.appendChild(gl);
+        extras.forEach((f) => {
+          const row = buildRow({ name: stem(f), desc: "", file: f, urls: null, installed: true });
+          panel.appendChild(row);
+          if (saved && saved === f) { chosenLabel = stem(f); chosenFile = f; }
+        });
+      }
+
+      // selección inicial: la guardada si sigue instalada; si no, la primera instalada; si no, por defecto
+      if (!chosenFile) {
+        const firstInst = panel.querySelector(".stm-mrow[data-installed='1']");
+        if (firstInst) { chosenFile = firstInst.dataset.file; chosenLabel = firstInst.dataset.label; }
+      }
+      setChosen(chosenFile, chosenLabel);
+      markSelected(chosenFile);
+    }
+
+    function buildRow(o) {
+      const row = document.createElement("div");
+      row.className = "stm-mrow"; row.dataset.file = o.file; row.dataset.label = o.name;
+      row.dataset.installed = o.installed ? "1" : "0";
+      const meta = document.createElement("div"); meta.className = "stm-mrow__meta";
+      const nm = document.createElement("div"); nm.className = "stm-mrow__name";
+      nm.innerHTML = o.star ? (o.name + ' <span class="star">★</span>') : o.name;
+      meta.appendChild(nm);
+      if (o.desc) { const d = document.createElement("div"); d.className = "stm-mrow__desc"; d.textContent = o.desc; meta.appendChild(d); }
+      row.appendChild(meta);
+      const right = document.createElement("div"); right.className = "stm-mrow__right";
+      if (o.installed) {
+        const b = document.createElement("span"); b.className = "stm-badge stm-badge--ok"; b.textContent = I18n.t("stm_installed"); right.appendChild(b);
+      } else if (o.urls && o.urls.length) {
+        const dl = document.createElement("button"); dl.type = "button"; dl.className = "stm-dlbtn"; dl.textContent = I18n.t("stm_download");
+        dl.addEventListener("click", (e) => { e.stopPropagation(); startDownload(o.file, o.urls, row); });
+        right.appendChild(dl);
+      }
+      row.appendChild(right);
+      row.addEventListener("click", () => { if (row.dataset.installed === "1") { setChosen(row.dataset.file, row.dataset.label); markSelected(row.dataset.file); togglePanel(false); } });
+      return row;
+    }
+
+    function markSelected(file) {
+      const panel = $("#stmModelPanel"); if (!panel) return;
+      panel.querySelectorAll(".stm-mrow").forEach((r) => r.classList.toggle("stm-mrow--sel", r.dataset.file === file));
+    }
+    function togglePanel(show) {
+      const p = $("#stmModelPanel"); if (!p) return;
+      p.hidden = (show === undefined) ? !p.hidden : !show;
+    }
+
+    // ---- descarga de un modelo desde el panel ----
+    let dlRowEl = null, dlFile = null;
+    function startDownload(file, urls, row) {
+      const b = bridge();
+      if (!b || !b.downloadModel) { UI.toast(I18n.t("stm_unavailable"), "warn"); return; }
+      if (dlFile) { UI.toast(I18n.t("stm_dl_busy"), "warn"); return; }
+      dlRowEl = row; dlFile = file;
+      const right = row.querySelector(".stm-mrow__right");
+      right.innerHTML = '<div class="stm-mrow__prog"><div class="stm-mrow__bar"><div class="stm-mrow__fill"></div></div><div class="stm-mrow__pct">0%</div></div>';
+      try { b.downloadModel(JSON.stringify(urls), file); } catch (e) { onModelDLError("fail"); }
+    }
+    function onModelDLProgress(pct) {
+      if (!dlRowEl) return;
+      const fill = dlRowEl.querySelector(".stm-mrow__fill"); const lab = dlRowEl.querySelector(".stm-mrow__pct");
+      if (fill) fill.style.width = pct + "%"; if (lab) lab.textContent = pct + "%";
+    }
+    function onModelDLDone(file) {
+      UI.toast(I18n.t("stm_dl_done"), "ok");
+      dlRowEl = null; dlFile = null;
+      refreshModels();
+      // auto-seleccionar el recién descargado
+      setChosen(file, null);
+      const panel = $("#stmModelPanel");
+      if (panel) { const r = panel.querySelector('.stm-mrow[data-file="' + (window.CSS && CSS.escape ? CSS.escape(file) : file) + '"]'); if (r) setChosen(r.dataset.file, r.dataset.label); }
+      markSelected(file);
+    }
+    function onModelDLError(code) {
+      dlRowEl = null; dlFile = null;
+      UI.toast(I18n.t(code === "cancel" ? "stm_cancelled" : "stm_dl_fail"), "warn");
+      refreshModels();
+    }
+    window.DSKModelDLProgress = function (pct) { onModelDLProgress(pct | 0); };
+    window.DSKModelDLDone = function (file) { onModelDLDone(file); };
+    window.DSKModelDLError = function (code) { onModelDLError(code); };
+
+    function refreshCached() {
+      const b = bridge(); const cw = $("#stmCached"); const res = $("#stmResult");
+      let state = "none";
+      try { if (b && typeof b.cached === "function") state = b.cached(curName()) || "none"; } catch (e) {}
+      if (cw) cw.hidden = (state === "none");
+      // si ya hay stems cacheados, permitir cargarlos directamente
+      if (state !== "none") {
+        last = last && last.key === curKey() ? last : { key: curKey(), instrumental: "cache", vocals: "cache" };
+        enableResult(state);
+      } else if (res) { res.hidden = true; }
+    }
+    function enableResult(state) {
+      const res = $("#stmResult"); if (res) res.hidden = false;
+      const li = $("#stmLoadInst"), lv = $("#stmLoadVox");
+      if (li) li.disabled = !(state === "both" || state === "instrumental");
+      if (lv) lv.disabled = !(state === "both" || state === "vocals");
+    }
+
+    async function openAdvanced() {
+      // Aviso ANTES de abrir el modal (consumo de tiempo/CPU).
+      const ok = await UI.confirm({
+        title: I18n.t("stm_warn_title"),
+        message: I18n.t("stm_warn_msg"),
+        danger: false,
+        confirmLabel: I18n.t("stm_warn_ok")
+      });
+      if (!ok) return;
+      if (!available()) { UI.toast(I18n.t("stm_unavailable"), "warn"); return; }
+      if (!curTrack()) { UI.toast(I18n.t("stm_notrack"), "warn"); return; }
+      setRunning(false); setProgress(0, "");
+      refreshModels();
+      refreshCached();
+      UI.openModal("stemsModal");
+    }
+
+    function run() {
+      if (running) {
+        try { const b = bridge(); if (b && b.cancel) b.cancel(); } catch (e) {}
+        cancelReq = true;
+        const s = $("#stmStage"); if (s) s.textContent = I18n.t("stm_stage_cancel");
+        const run = $("#stmRun"); if (run) run.disabled = true;
+        return;
+      }
+      cancelReq = false;
+      if (!available()) { UI.toast(I18n.t("stm_unavailable"), "warn"); return; }
+      const t = curTrack(); if (!t) { UI.toast(I18n.t("stm_notrack"), "warn"); return; }
+      const saveInst = $("#stmSaveInst") ? $("#stmSaveInst").checked : true;
+      const saveVox = $("#stmSaveVox") ? $("#stmSaveVox").checked : true;
+      if (!saveInst && !saveVox) { UI.toast(I18n.t("stm_pick_one"), "warn"); return; }
+      if (!chosenModel()) { UI.toast(I18n.t("stm_pick_model"), "warn"); togglePanel(true); return; }
+      const opts = {
+        key: curKey(), name: curName(),
+        uri: t.uri || null, nativeIndex: (typeof t.nativeIndex === "number" ? t.nativeIndex : null),
+        ytId: t.ytId || null,
+        save: { instrumental: saveInst, vocals: saveVox },
+        model: chosenModel()
+      };
+      setRunning(true); setProgress(0, "decode");
+      try { bridge().separate(JSON.stringify(opts)); }
+      catch (e) { setRunning(false); UI.error(I18n.t("stm_fail")); }
+    }
+
+    async function loadStem(which) {
+      const r = last; if (!r) return;
+      const uri = which === "instrumental" ? r.instrumental : (which === "vocals" ? r.vocals : null);
+      const base = curName().replace(/\.[a-z0-9]+$/i, "");
+      if (which === "original") {
+        // recargar la pista original
+        const t = curTrack(); if (t) { UI.closeModal("stemsModal"); await loadFile(t, true); }
+        return;
+      }
+      if (!uri) return;
+      // si el resultado vino de caché, pedir al nativo la URI real
+      let realUri = uri;
+      if (uri === "cache") {
+        try { const b = bridge(); realUri = b && b.uriFor ? b.uriFor(curName(), which) : null; } catch (e) { realUri = null; }
+      }
+      if (!realUri) { UI.toast(I18n.t("stm_fail"), "warn"); return; }
+      const label = which === "instrumental" ? I18n.t("stm_instrumental") : I18n.t("stm_vocals");
+      const track = { name: base + " · " + label, uri: realUri, stem: which };
+      UI.closeModal("stemsModal");
+      await loadFile(track, true);
+    }
+
+    // callbacks desde el nativo
+    window.DSKStemsProgress = function (pct, stage) { try { setProgress(pct, stage); } catch (e) {} };
+    window.DSKStemsError = function (code) {
+      cancelReq = false; setRunning(false);
+      const known = { nomodel: "stm_err_nomodel", decode: "stm_err_decode", oom: "stm_err_oom", cancel: "stm_cancelled" };
+      const k = known[code]; UI.toast(k ? I18n.t(k) : (I18n.t("stm_fail") + (code ? " · " + code : "")), "warn");
+    };
+    window.DSKStemsDone = function (json) {
+      cancelReq = false; setRunning(false); setProgress(100, "save");
+      let r; try { r = typeof json === "string" ? JSON.parse(json) : json; } catch (e) { r = null; }
+      if (!r) { UI.error(I18n.t("stm_fail")); return; }
+      last = { key: r.key || curKey(), instrumental: r.instrumental || null, vocals: r.vocals || null };
+      const state = (last.instrumental && last.vocals) ? "both" : (last.instrumental ? "instrumental" : "vocals");
+      enableResult(state);
+      const cw = $("#stmCached"); if (cw) cw.hidden = false;
+      UI.toast(I18n.t("stm_done"), "ok");
+      if (openChoice === "instrumental" && last.instrumental) loadStem("instrumental");
+      else if (openChoice === "vocals" && last.vocals) loadStem("vocals");
+    };
+
+    function init() {
+      const adv = $("#voxAdvanced"); if (adv) adv.addEventListener("click", openAdvanced);
+      const run0 = $("#stmRun"); if (run0) run0.addEventListener("click", run);
+      $$("#stmOpen .chip").forEach((c) => c.addEventListener("click", () => {
+        openChoice = c.getAttribute("data-open");
+        $$("#stmOpen .chip").forEach((x) => x.classList.toggle("chip--active", x === c));
+      }));
+      const li = $("#stmLoadInst"); if (li) li.addEventListener("click", () => loadStem("instrumental"));
+      const lv = $("#stmLoadVox"); if (lv) lv.addEventListener("click", () => loadStem("vocals"));
+      const lo = $("#stmLoadOrig"); if (lo) lo.addEventListener("click", () => loadStem("original"));
+      const mb = $("#stmModelBtn"); if (mb) mb.addEventListener("click", () => togglePanel());
+    }
+    return { init: init, openAdvanced: openAdvanced };
+  })();
 
   function openVoiceModal() {
     // al abrir por long-press, activar la supresión si estaba apagada

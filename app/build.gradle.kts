@@ -59,6 +59,9 @@ dependencies {
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
 
+    implementation(libs.onnxruntime.android)
+    implementation(libs.jtransforms)
+
     // Notificación de reproducción (MediaSessionCompat + MediaStyle)
     implementation("androidx.media:media:1.7.0") {
         exclude(group = "androidx.annotation", module = "annotation-experimental")
