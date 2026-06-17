@@ -721,7 +721,6 @@
   try { const v = parseInt(localStorage.getItem("dsklofi.abreact"), 10); if (v >= 0) abReact = v; } catch (e) {}
   try { abSnap = localStorage.getItem("dsklofi.absnap") === "1"; } catch (e) {}
   let abTrackKey = null;        // identidad de la pista (para conservar A/B al cambiar de modo)
-  let _abHoldFired = false;     // para suprimir el toggle tras la pulsación larga
   // Fuente de picos para la onda: el buffer del modo completo, o uno decodificado
   // BAJO DEMANDA al abrir el modal en modo reproductor (no afecta a la reproducción).
   let abPeakBuf = null, abPeakBlob = null, abPeakToken = 0, abPeakBusy = false;
@@ -1872,7 +1871,6 @@
 
   function bindTransport() {
     $("#btnPlay").addEventListener("click", async () => {
-      if (_abHoldFired) { _abHoldFired = false; return; }   // fue pulsación larga → A–B
       // cola de YouTube restaurada en frío: aún no se resolvió el stream.
       // Al pulsar play, cargamos de verdad la pista actual y la reproducimos.
       if (ytPendingResolve && playlist[plIndex] && playlist[plIndex].ytId) {
@@ -1889,17 +1887,6 @@
 
     $("#btnEject").addEventListener("click", () => { try { DSKQueue.open(); } catch (e) {} });
 
-    // A–B repeat: mantener pulsado play/pausa abre el mini modal
-    (function () {
-      const btn = $("#btnPlay"); if (!btn) return;
-      let timer = 0;
-      const clear = () => { if (timer) { clearTimeout(timer); timer = 0; } };
-      btn.addEventListener("pointerdown", () => {
-        clear(); _abHoldFired = false;
-        timer = setTimeout(() => { timer = 0; _abHoldFired = true; openAbModal(); try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {} }, 450);
-      });
-      ["pointerup", "pointercancel", "pointerleave"].forEach((ev) => btn.addEventListener(ev, clear));
-    })();
     const abBind = (id, fn) => { const b = $("#" + id); if (b) b.addEventListener("click", fn); };
     // SET A/B captura el instante EXACTO del toque (pointerdown), no al soltar:
     // mayor precisión al marcar a oído.
