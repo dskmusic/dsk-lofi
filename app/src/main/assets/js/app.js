@@ -716,6 +716,11 @@
   let abXfade = 0.04;           // crossfade del salto del loop (s), 0 = corte seco
   try { const v = parseFloat(localStorage.getItem("dsklofi.abxfade")); if (v >= 0) abXfade = v; } catch (e) {}
   let _abDip = false;           // estado del fundido de salida del loop
+  let abComp = false;           // compensar latencia al fijar A/B en directo
+  let abSnap = false;           // ajustar el punto al pico más cercano
+  try { abComp = localStorage.getItem("dsklofi.abcomp") === "1"; } catch (e) {}
+  try { abSnap = localStorage.getItem("dsklofi.absnap") === "1"; } catch (e) {}
+  let abTrackKey = null;        // identidad de la pista (para conservar A/B al cambiar de modo)
   let _abHoldFired = false;     // para suprimir el toggle tras la pulsación larga
   // Fuente de picos para la onda: el buffer del modo completo, o uno decodificado
   // BAJO DEMANDA al abrir el modal en modo reproductor (no afecta a la reproducción).
@@ -768,8 +773,29 @@
     if (card) card.querySelector(".ab-card").classList.toggle("ab-card--on", abActive());
   }
   function abReset() { ab.on = false; ab.a = null; ab.b = null; abRefresh(); abZoom(); }
-  function abSetA() { if (!abLoaded()) return; ab.a = Engine.position() || 0; if (ab.b != null && ab.b <= ab.a) ab.b = null; abRefresh(); abZoom(); }
-  function abSetB() { if (!abLoaded()) return; const p = Engine.position() || 0; if (ab.a == null) ab.a = 0; if (p <= ab.a) return; ab.b = p; abRefresh(); abZoom(); }
+  // latencia estimada de captura (salida de audio + reacción) al fijar en directo
+  function abLatency() { try { const c = Engine.ctx; return (c ? ((c.outputLatency || 0) + (c.baseLatency || 0)) : 0) + 0.05; } catch (e) { return 0.1; } }
+  // ajusta un instante al pico de amplitud más cercano (±80 ms) si hay onda
+  function abSnapPeak(t) {
+    const buf = Engine.buffer || abPeakBuf; if (!buf) return t;
+    const sr = buf.sampleRate, d = buf.getChannelData(0), total = d.length;
+    const win = Math.floor(0.08 * sr);
+    let c = Math.max(0, Math.min(Math.floor(t * sr), total - 1));
+    const s = Math.max(0, c - win), e = Math.min(total, c + win);
+    let bi = c, bv = -1;
+    for (let i = s; i < e; i += 2) { const v = Math.abs(d[i]); if (v > bv) { bv = v; bi = i; } }
+    return bi / sr;
+  }
+  // aplica compensación de latencia (solo en directo) y/o ajuste al pico
+  function abPlace(raw, isA) {
+    const dur = abViewDur() || abDur() || 0;
+    let t = raw;
+    if (abComp && Engine.playing) t += isA ? -abLatency() : abLatency();   // A antes, B después
+    if (abSnap) t = abSnapPeak(t);
+    return Math.max(0, dur ? Math.min(t, dur) : t);
+  }
+  function abSetA() { if (!abLoaded()) return; ab.a = abPlace(Engine.position() || 0, true); if (ab.b != null && ab.b <= ab.a) ab.b = null; abRefresh(); abZoom(); }
+  function abSetB() { if (!abLoaded()) return; const p = abPlace(Engine.position() || 0, false); if (ab.a == null) ab.a = 0; if (p <= ab.a) return; ab.b = p; abRefresh(); abZoom(); }
   function abNudge(which, delta) {
     const dur = abViewDur();
     if (which === "a") {
@@ -786,7 +812,7 @@
   function abModalOpen() { const m = $("#abModal"); return !!(m && m.classList.contains("modal--open")); }
   function openAbModal() {
     abPeakBuf = Engine.buffer || abPeakBuf;
-    abZoom(); abRefresh(); syncAbStepUI(); syncAbXfadeUI(); syncAbReps();
+    abZoom(); abRefresh(); syncAbStepUI(); syncAbXfadeUI(); syncAbReps(); syncAbToggles();
     const ap = $("#abPlay");
     if (ap) ap.innerHTML = Engine.playing ? SVG_PAUSE_SM : SVG_PLAY_SM;
     UI.openModal("abModal");
@@ -872,6 +898,10 @@
     const N = Math.max(8, Math.floor(W / 2));
     const key = abView.start.toFixed(2) + "_" + abView.end.toFixed(2) + "_" + N + "_" + (abPeakBuf ? abPeakBuf.length : 0);
     if (abWaveKey !== key) { abWavePeaks = peaksRangeFrom(abPeakBuf, abView.start, abView.end, N); abWaveKey = key; }
+    // ganancia vertical automática: las pistas de poco volumen se ven planas, así
+    // que escalamos para llenar la altura (solo amplifica; tope para no exagerar).
+    let pmax = 0; for (let i = 0; i < N; i++) { if (abWavePeaks[i] > pmax) pmax = abWavePeaks[i]; }
+    const vGain = pmax > 0.0001 ? Math.max(1, Math.min(0.92 / pmax, 12)) : 1;
     const acc = cssVar("--acc") || "#6cf";
     const muted = cssVar("--color-text-faint") || "#888";
     const aX = ab.a != null ? abTimeToX(ab.a, W) : null;
@@ -879,7 +909,8 @@
     if (aX != null && bX != null && bX > aX) { x.fillStyle = acc; x.globalAlpha = 0.12; x.fillRect(aX, 0, bX - aX, H); x.globalAlpha = 1; }
     const bw = W / N;
     for (let i = 0; i < N; i++) {
-      const h = Math.max(H * 0.04, abWavePeaks[i] * H * 0.92);
+      const v = Math.min(1, abWavePeaks[i] * vGain);
+      const h = Math.max(H * 0.04, v * H * 0.92);
       const t = abView.start + (i / N) * (abView.end - abView.start);
       const inAB = (ab.a != null && ab.b != null && t >= ab.a && t <= ab.b);
       x.fillStyle = inAB ? acc : muted; x.globalAlpha = inAB ? 0.95 : 0.5;
@@ -974,6 +1005,12 @@
     });
   }
   let abRepsVal = 2;
+  function setAbComp(v) { abComp = !!v; try { localStorage.setItem("dsklofi.abcomp", abComp ? "1" : "0"); } catch (e) {} syncAbToggles(); }
+  function setAbSnap(v) { abSnap = !!v; try { localStorage.setItem("dsklofi.absnap", abSnap ? "1" : "0"); } catch (e) {} syncAbToggles(); }
+  function syncAbToggles() {
+    const c = $("#abCompChip"); if (c) c.classList.toggle("is-on", abComp);
+    const s = $("#abSnapChip"); if (s) s.classList.toggle("is-on", abSnap);
+  }
   function syncAbReps() {
     const wrap = $("#abReps"); if (!wrap) return;
     let matched = false;
@@ -1565,8 +1602,11 @@
 
   async function loadFile(track, autoplay, prepareOnly) {
     if (!track) return;
-    try { abReset(); } catch (e) {}   // A–B no aplica a otra pista
-    abPeakBuf = null; abPeakBlob = null; abPeakToken++;   // invalidar onda A–B
+    // A–B se conserva si es la MISMA pista (p. ej. al cambiar de modo); solo se
+    // borra al cambiar realmente de pista.
+    const _tk = (track.uri || (track.ytId ? "yt:" + track.ytId : (typeof track.nativeIndex === "number" ? "ni:" + track.nativeIndex : "nm:" + (track.name || ""))));
+    if (_tk !== abTrackKey) { abTrackKey = _tk; try { abReset(); } catch (e) {} }
+    abPeakBuf = null; abPeakBlob = null; abPeakToken++;   // invalidar onda A–B (la fuente cambia)
     // compat: si llega un File directo (web antiguo), envolverlo
     if (track instanceof File) track = { name: track.name, file: track };
     // YouTube: requiere modo reproductor (audio remoto). Cambia sin recargar.
@@ -1825,6 +1865,8 @@
     { const rs = $("#abReps"); if (rs) rs.addEventListener("click", (e) => { const b = e.target.closest("[data-reps]"); if (b) { abRepsVal = parseInt(b.getAttribute("data-reps"), 10); const ci = $("#abRepsCustom"); if (ci) ci.value = ""; syncAbReps(); } }); }
     { const ci = $("#abRepsCustom"); if (ci) ci.addEventListener("input", () => { const v = parseInt(ci.value, 10); if (v >= 1) { abRepsVal = Math.min(64, v); syncAbReps(); } }); }
     abBind("abExportBtn", () => exportLoop(abRepsVal));
+    abBind("abCompChip", () => setAbComp(!abComp));
+    abBind("abSnapChip", () => setAbSnap(!abSnap));
     abInitWave();
     abBind("abPlay", async () => {
       const loaded = playerOnlyMode ? !!nativeAudio.src : !!Engine.buffer;
