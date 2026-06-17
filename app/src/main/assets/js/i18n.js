@@ -108,7 +108,7 @@
         opt_norm: "AUTO-GAIN", opt_norm_sub: "Evens out the volume between tracks.",
         opt_norm_level: "TARGET LEVEL", opt_norm_soft: "SOFT", opt_norm_normal: "NORMAL", opt_norm_loud: "LOUD",
         opt_gain: "OUTPUT GAIN", opt_gain_sub: "Boost or cut the volume (−6 to +6 dB). A limiter prevents distortion. Double-tap the label to reset.",
-        opt_restore_sub: "All effects, theme and language back to factory.",
+        opt_restore_sub: "All effects, theme, language and A–B loop options back to factory.",
         opt_check_update: "CHECK FOR UPDATES",
         opt_about: "DSK•LoFi — local lofi FX studio. No network, no tracking.",
 
@@ -126,7 +126,7 @@
 
         /* confirm */
         cf_restore_title: "RESTORE DEFAULTS?",
-        cf_restore_msg: "Every effect, the theme and the language will return to factory values. Your loaded track is kept.",
+        cf_restore_msg: "Every effect, the theme, the language and the A–B loop options will return to factory values. Your loaded track is kept.",
         cancel: "CANCEL", confirm: "RESTORE", ok: "OK",
         restored: "Defaults restored",
 
@@ -331,7 +331,7 @@
         opt_norm: "AUTO-GANANCIA", opt_norm_sub: "Iguala el volumen entre pistas.",
         opt_norm_level: "NIVEL OBJETIVO", opt_norm_soft: "SUAVE", opt_norm_normal: "NORMAL", opt_norm_loud: "ALTO",
         opt_gain: "GANANCIA DE SALIDA", opt_gain_sub: "Sube o baja el volumen (−6 a +6 dB). Lleva un limitador que evita la distorsión. Doble toque en el título para restablecer.",
-        opt_restore_sub: "Efectos, tema e idioma vuelven a fábrica.",
+        opt_restore_sub: "Efectos, tema, idioma y opciones del loop A–B vuelven a fábrica.",
         opt_check_update: "BUSCAR ACTUALIZACIONES",
         opt_about: "DSK•LoFi — estudio de FX lofi local. Sin red, sin rastreo.",
 
@@ -348,7 +348,7 @@
         cfg_import_msg: "Esto sustituirá tus ajustes, efectos, carpetas y listas actuales. La app se reiniciará.",
 
         cf_restore_title: "¿RESTAURAR VALORES?",
-        cf_restore_msg: "Todos los efectos, el tema y el idioma volverán a los valores de fábrica. Tu pista cargada se mantiene.",
+        cf_restore_msg: "Todos los efectos, el tema, el idioma y las opciones del loop A–B volverán a los valores de fábrica. Tu pista cargada se mantiene.",
         cancel: "CANCELAR", confirm: "RESTAURAR", ok: "OK",
         restored: "Valores restaurados",
 

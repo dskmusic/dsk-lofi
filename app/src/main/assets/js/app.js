@@ -713,7 +713,7 @@
   const ab = { on: false, a: null, b: null };
   let abStep = 0.1;             // paso de ajuste −/+ (s), configurable
   try { const v = parseFloat(localStorage.getItem("dsklofi.abstep")); if (v > 0) abStep = v; } catch (e) {}
-  let abXfade = 0.04;           // crossfade del salto del loop (s), 0 = corte seco
+  let abXfade = 0.025;          // crossfade del salto del loop (s), 0 = corte seco
   try { const v = parseFloat(localStorage.getItem("dsklofi.abxfade")); if (v >= 0) abXfade = v; } catch (e) {}
   let _abDip = false;           // estado del fundido de salida del loop
   let abReact = 0;              // compensación de reacción al fijar A/B en directo (ms)
@@ -3587,6 +3587,10 @@
       langSeg.set(I18n.lang);
       syncAll();
       Object.values(presetRows).forEach((r) => r.clear());
+      // A–B loop: opciones a valores de fábrica
+      abStep = 0.1; abXfade = 0.025; abReact = 0; abSnap = false; abRepsVal = 2;
+      ["abstep", "abxfade", "abreact", "absnap"].forEach((k) => { try { localStorage.removeItem("dsklofi." + k); } catch (e) {} });
+      try { abReset(); syncAbStepUI(); syncAbXfadeUI(); syncAbReactUI(); syncAbToggles(); syncAbReps(); } catch (e) {}
       refreshDynamicText();
       // si estaba en modo reproductor, recargar la pista con el motor completo
       if (wasPlayerOnly && cur) { pendingRestorePos = pos > 1 ? pos : 0; await loadFile(cur, wasPlaying); }
