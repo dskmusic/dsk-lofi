@@ -953,6 +953,7 @@
     if (!abWaveC) return;
     abWaveX = abWaveC.getContext("2d");
     const HANDLE_TH = 22;   // px para "agarrar" un punto ya fijado
+    let abTapT = 0, abTapX = 0, abTapTimer = 0;   // detección de toque/doble toque
     const onDown = (e) => {
       abPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
       try { abWaveC.setPointerCapture(e.pointerId); } catch (_) {}
@@ -1014,9 +1015,20 @@
       if (abPinch && abPtrs.size < 2) abPinch = null;
       if (abDrag) { abDrag = null; abPan = null; return; }
       const wasPan = !!abPan; abPan = null;
-      // toque simple (un dedo, sin apenas moverse) → seek; si paneó, no.
+      // toque simple (un dedo, sin apenas moverse) → seek; doble toque → zoom 100%
       if (wasPan && abPtrs.size === 0 && !abPinch && moved < 8 && abPeakReady()) {
-        DSKControls.seek(abClamp(abXToTime(e.clientX), 0, abViewDur()));
+        const now = Date.now(), x = e.clientX;
+        if (now - abTapT < 300 && Math.abs(x - abTapX) < 40) {
+          if (abTapTimer) { clearTimeout(abTapTimer); abTapTimer = 0; }
+          abTapT = 0;
+          const dur = abViewDur();
+          abView = { start: 0, end: dur || 0 }; abWaveKey = "";   // restaurar zoom al 100%
+          return;
+        }
+        abTapT = now; abTapX = x;
+        const seekT = abClamp(abXToTime(x), 0, abViewDur());
+        if (abTapTimer) clearTimeout(abTapTimer);
+        abTapTimer = setTimeout(() => { abTapTimer = 0; DSKControls.seek(seekT); }, 260);
       }
     };
     abWaveC.addEventListener("pointerdown", onDown);
