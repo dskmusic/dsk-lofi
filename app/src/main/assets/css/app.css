@@ -520,7 +520,8 @@
     /* ---- A–B repeat ---- */
     .ab-card { width: min(94vw, 380px); }
     .ab-card--on .ab-now { color: var(--acc); }
-    .ab-now { text-align: center; font-family: var(--font-mono); font-size: var(--fs-h3, 22px); margin: var(--space-3) 0 var(--space-4); color: var(--color-text); }
+    .ab-now { text-align: center; font-family: var(--font-mono); font-size: var(--fs-h3, 22px); margin: var(--space-3) 0 var(--space-3); color: var(--color-text); }
+    .ab-wave { display: block; width: 100%; height: 88px; margin-bottom: var(--space-3); border-radius: var(--radius-sm); background: var(--color-surface-raised); box-shadow: var(--shadow-inset); touch-action: none; cursor: ew-resize; }
     .ab-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
     .ab-tag { flex: none; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-micro); background: var(--color-surface-raised); box-shadow: var(--shadow-inset); }
     .ab-tag--a { color: var(--neon-cyan, var(--acc)); }

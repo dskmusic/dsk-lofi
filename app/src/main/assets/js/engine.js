@@ -865,6 +865,26 @@
       return peaks;
     },
 
+    // Picos de un tramo [startSec, endSec] en n cubos (para el zoom del modal A–B)
+    getPeaksRange(startSec, endSec, n) {
+      if (!this.buffer || n < 1) return null;
+      const sr = this.buffer.sampleRate;
+      const d = this.buffer.getChannelData(0);
+      const total = d.length;
+      let s = Math.max(0, Math.floor(startSec * sr));
+      let e = Math.min(total, Math.ceil(endSec * sr));
+      const peaks = new Float32Array(n);
+      if (e <= s) return peaks;
+      const block = Math.max(1, Math.floor((e - s) / n));
+      for (let i = 0; i < n; i++) {
+        let max = 0;
+        const a = s + i * block, b = Math.min(a + block, e);
+        for (let j = a; j < b; j += 4) { const v = Math.abs(d[j]); if (v > max) max = v; }
+        peaks[i] = max;
+      }
+      return peaks;
+    },
+
     /* ---- offline render (export) ----
        options: { selection: {start,end} (0..1 fracs), tapeEffect: bool }   */
     async render(onProgress, options, shouldAbort) {

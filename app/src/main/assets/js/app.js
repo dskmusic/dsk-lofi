@@ -729,9 +729,9 @@
     const card = $("#abModal");
     if (card) card.querySelector(".ab-card").classList.toggle("ab-card--on", abActive());
   }
-  function abReset() { ab.on = false; ab.a = null; ab.b = null; abRefresh(); }
-  function abSetA() { if (!abLoaded()) return; ab.a = Engine.position() || 0; if (ab.b != null && ab.b <= ab.a) ab.b = null; abRefresh(); }
-  function abSetB() { if (!abLoaded()) return; const p = Engine.position() || 0; if (ab.a == null) ab.a = 0; if (p <= ab.a) return; ab.b = p; abRefresh(); }
+  function abReset() { ab.on = false; ab.a = null; ab.b = null; abRefresh(); abZoom(); }
+  function abSetA() { if (!abLoaded()) return; ab.a = Engine.position() || 0; if (ab.b != null && ab.b <= ab.a) ab.b = null; abRefresh(); abZoom(); }
+  function abSetB() { if (!abLoaded()) return; const p = Engine.position() || 0; if (ab.a == null) ab.a = 0; if (p <= ab.a) return; ab.b = p; abRefresh(); abZoom(); }
   function abNudge(which, delta) {
     const dur = abDur();
     if (which === "a") {
@@ -743,20 +743,145 @@
       const lo = ab.a != null ? ab.a + 0.1 : 0;
       ab.b = Math.max(lo, Math.min(ab.b + delta, dur || ab.b + delta));
     }
-    abRefresh();
+    abRefresh(); abZoom();
   }
   function abModalOpen() { const m = $("#abModal"); return !!(m && m.classList.contains("modal--open")); }
   function openAbModal() {
+    abZoom();
     abRefresh();
     const ap = $("#abPlay");
     if (ap) ap.innerHTML = Engine.playing ? SVG_PAUSE_SM : SVG_PLAY_SM;
     UI.openModal("abModal");
+    requestAnimationFrame(() => { abSizeCanvas(); abDrawWave(); });
   }
   // comprobación del bucle A–B (se llama desde raf en cada frame)
   function abTick() {
     if (!abActive() || !Engine.playing) return;
     const pos = Engine.position() || 0;
     if (pos >= ab.b - 0.02) { DSKControls.seek(ab.a); }
+  }
+
+  /* ---- forma de onda del modal A–B (zoom + arrastre táctil) ---- */
+  let abWaveC = null, abWaveX = null;
+  let abView = { start: 0, end: 0 };
+  let abWavePeaks = null, abWaveKey = "";
+  let abDrag = null;            // "a" | "b" | null
+  const abClamp = (v, a, b) => Math.max(a, Math.min(v, b));
+  function abZoom() {
+    const dur = abDur();
+    if (!dur) { abView = { start: 0, end: 0 }; abWaveKey = ""; return; }
+    if (ab.a != null && ab.b != null) {
+      const m = Math.max(0.5, Math.min((ab.b - ab.a) * 0.6, 5));
+      abView = { start: Math.max(0, ab.a - m), end: Math.min(dur, ab.b + m) };
+    } else if (ab.a != null) {
+      abView = { start: Math.max(0, ab.a - 2), end: Math.min(dur, ab.a + 2) };
+    } else {
+      abView = { start: 0, end: dur };
+    }
+    abWaveKey = ""; // forzar recomputo de picos
+  }
+  function abSizeCanvas() {
+    if (!abWaveC) return false;
+    const r = abWaveC.getBoundingClientRect();
+    if (r.width < 2) return false;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
+    if (abWaveC.width !== w || abWaveC.height !== h) { abWaveC.width = w; abWaveC.height = h; abWaveKey = ""; }
+    return true;
+  }
+  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function abTimeToX(t, W) { const span = (abView.end - abView.start) || 1; return ((t - abView.start) / span) * W; }
+  function abXToTime(clientX) {
+    const r = abWaveC.getBoundingClientRect();
+    const f = abClamp((clientX - r.left) / (r.width || 1), 0, 1);
+    return abView.start + f * (abView.end - abView.start);
+  }
+  function abDrawWave() {
+    if (!abWaveC || !abWaveX) return;
+    if (!abSizeCanvas()) return;
+    const W = abWaveC.width, H = abWaveC.height, x = abWaveX;
+    x.clearRect(0, 0, W, H);
+    const dur = abDur();
+    if (!Engine.buffer || dur <= 0) {
+      x.fillStyle = cssVar("--color-text-faint") || "#888";
+      x.globalAlpha = 0.6; x.textAlign = "center"; x.textBaseline = "middle";
+      x.font = (H * 0.18) + "px sans-serif";
+      x.fillText(I18n.t("ab_wave_na"), W / 2, H / 2);
+      x.globalAlpha = 1; x.textAlign = "start";
+      return;
+    }
+    const N = Math.max(8, Math.floor(W / 2));
+    const key = abView.start.toFixed(2) + "_" + abView.end.toFixed(2) + "_" + N;
+    if (abWaveKey !== key) { abWavePeaks = Engine.getPeaksRange(abView.start, abView.end, N) || new Float32Array(N); abWaveKey = key; }
+    const acc = cssVar("--acc") || "#6cf";
+    const muted = cssVar("--color-text-faint") || "#888";
+    const aX = ab.a != null ? abTimeToX(ab.a, W) : null;
+    const bX = ab.b != null ? abTimeToX(ab.b, W) : null;
+    // zona A–B sombreada
+    if (aX != null && bX != null && bX > aX) {
+      x.fillStyle = acc; x.globalAlpha = 0.12; x.fillRect(aX, 0, bX - aX, H); x.globalAlpha = 1;
+    }
+    // barras
+    const bw = W / N;
+    for (let i = 0; i < N; i++) {
+      const h = Math.max(H * 0.04, abWavePeaks[i] * H * 0.92);
+      const bx = i * bw;
+      const t = abView.start + (i / N) * (abView.end - abView.start);
+      const inAB = (ab.a != null && ab.b != null && t >= ab.a && t <= ab.b);
+      x.fillStyle = inAB ? acc : muted;
+      x.globalAlpha = inAB ? 0.95 : 0.5;
+      x.fillRect(bx, (H - h) / 2, Math.max(1, bw - 1), h);
+    }
+    x.globalAlpha = 1;
+    // playhead
+    const pos = Engine.position() || 0;
+    if (pos >= abView.start && pos <= abView.end) {
+      x.fillStyle = acc; x.globalAlpha = 0.85; x.fillRect(abTimeToX(pos, W) - 1, 0, 2, H); x.globalAlpha = 1;
+    }
+    // tiradores A (cian) y B (ámbar)
+    const drawHandle = (hx, col) => {
+      x.fillStyle = col; x.fillRect(hx - 1.5, 0, 3, H);
+      x.beginPath(); x.arc(hx, H * 0.5, Math.max(6, H * 0.1), 0, Math.PI * 2); x.fill();
+    };
+    if (aX != null) drawHandle(aX, cssVar("--neon-cyan") || acc);
+    if (bX != null) drawHandle(bX, cssVar("--neon-amber") || acc);
+  }
+  function abInitWave() {
+    abWaveC = $("#abWave");
+    if (!abWaveC) return;
+    abWaveX = abWaveC.getContext("2d");
+    const onDown = (e) => {
+      if (!Engine.buffer) return;
+      const dur = abDur(); if (dur <= 0) return;
+      const r = abWaveC.getBoundingClientRect();
+      const px = e.clientX - r.left;
+      const tt = abXToTime(e.clientX);
+      if (ab.a != null && ab.b != null) {
+        const aPx = (ab.a - abView.start) / (abView.end - abView.start) * r.width;
+        const bPx = (ab.b - abView.start) / (abView.end - abView.start) * r.width;
+        abDrag = Math.abs(px - aPx) <= Math.abs(px - bPx) ? "a" : "b";   // arrastra el más cercano
+      } else if (ab.a == null) {
+        ab.a = abClamp(tt, 0, dur); if (ab.b != null && ab.a >= ab.b) ab.b = null; abRefresh(); abDrag = "a";
+      } else if (ab.b == null) {
+        if (tt > ab.a) { ab.b = abClamp(tt, ab.a + 0.1, dur); abRefresh(); abDrag = "b"; }
+      }
+      if (abDrag) { try { abWaveC.setPointerCapture(e.pointerId); } catch (_) {} }
+      e.preventDefault();
+    };
+    const onMove = (e) => {
+      if (!abDrag) return;
+      const dur = abDur();
+      const tt = abXToTime(e.clientX);
+      if (abDrag === "a") ab.a = abClamp(tt, 0, ab.b != null ? ab.b - 0.1 : dur);
+      else ab.b = abClamp(tt, ab.a != null ? ab.a + 0.1 : 0, dur);
+      abRefresh();
+      e.preventDefault();
+    };
+    const onUp = () => { if (abDrag) { abDrag = null; abZoom(); } };
+    abWaveC.addEventListener("pointerdown", onDown);
+    abWaveC.addEventListener("pointermove", onMove);
+    abWaveC.addEventListener("pointerup", onUp);
+    abWaveC.addEventListener("pointercancel", () => { abDrag = null; });
   }
   const SVG_PLAY_SM = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polygon points="8 4.5 20 12 8 19.5"></polygon></svg>';
   const SVG_PAUSE_SM = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14"></rect><rect x="14" y="5" width="4" height="14"></rect></svg>';
@@ -1593,6 +1718,7 @@
     abBind("abBMinus", () => abNudge("b", -AB_STEP));
     abBind("abBPlus", () => abNudge("b", AB_STEP));
     abBind("abClear", abReset);
+    abInitWave();
     abBind("abPlay", async () => {
       const loaded = playerOnlyMode ? !!nativeAudio.src : !!Engine.buffer;
       if (!loaded) return;
@@ -2447,6 +2573,7 @@
     if (abModalOpen()) {
       const an = $("#abNow"); if (an) an.textContent = fmtAB(Engine.position());
       const ap = $("#abPlay"); if (ap) ap.classList.toggle("is-on", Engine.playing);
+      abDrawWave();
     }
     // Dibujo del visualizador/bobinas limitado a ~30 fps (constante): reduce el
     // trabajo de canvas a la mitad sin los cortes del antiguo gateado por modal.
