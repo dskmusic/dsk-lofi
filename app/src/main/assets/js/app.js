@@ -3566,7 +3566,8 @@
       const wasPlaying = Engine.playing;
       const cur = playlist[plIndex];
       const pos = Engine.position();
-      if (wasPlayerOnly) { try { Engine.stop(); } catch (e) {} applyPlayerOnly(false, true); }
+      if (wasPlayerOnly) { try { Engine.stop(); } catch (e) {} }
+      else { try { Engine.stop(); } catch (e) {} applyPlayerOnly(true, false); }   // fábrica = reproductor simple
       localStorage.removeItem("dsklofi.playeronly");
       Engine.resetAll();
       Engine.setSpeed(1);
@@ -3598,8 +3599,8 @@
       ["abstep", "abxfade", "abreact", "absnap"].forEach((k) => { try { localStorage.removeItem("dsklofi." + k); } catch (e) {} });
       try { abReset(); syncAbStepUI(); syncAbXfadeUI(); syncAbReactUI(); syncAbToggles(); syncAbReps(); } catch (e) {}
       refreshDynamicText();
-      // si estaba en modo reproductor, recargar la pista con el motor completo
-      if (wasPlayerOnly && cur) { pendingRestorePos = pos > 1 ? pos : 0; await loadFile(cur, wasPlaying); }
+      // si estaba en modo completo, recargar la pista con el motor de reproductor simple
+      if (!wasPlayerOnly && cur) { pendingRestorePos = pos > 1 ? pos : 0; await loadFile(cur, wasPlaying); }
       UI.toast(I18n.t("restored"), "ok");
     });
 
