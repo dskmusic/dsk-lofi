@@ -713,6 +713,9 @@
   const ab = { on: false, a: null, b: null };
   let abStep = 0.1;             // paso de ajuste −/+ (s), configurable
   try { const v = parseFloat(localStorage.getItem("dsklofi.abstep")); if (v > 0) abStep = v; } catch (e) {}
+  let abXfade = 0.04;           // crossfade del salto del loop (s), 0 = corte seco
+  try { const v = parseFloat(localStorage.getItem("dsklofi.abxfade")); if (v >= 0) abXfade = v; } catch (e) {}
+  let _abDip = false;           // estado del fundido de salida del loop
   let _abHoldFired = false;     // para suprimir el toggle tras la pulsación larga
   // Fuente de picos para la onda: el buffer del modo completo, o uno decodificado
   // BAJO DEMANDA al abrir el modal en modo reproductor (no afecta a la reproducción).
@@ -783,7 +786,7 @@
   function abModalOpen() { const m = $("#abModal"); return !!(m && m.classList.contains("modal--open")); }
   function openAbModal() {
     abPeakBuf = Engine.buffer || abPeakBuf;
-    abZoom(); abRefresh(); syncAbStepUI();
+    abZoom(); abRefresh(); syncAbStepUI(); syncAbXfadeUI(); syncAbReps();
     const ap = $("#abPlay");
     if (ap) ap.innerHTML = Engine.playing ? SVG_PAUSE_SM : SVG_PLAY_SM;
     UI.openModal("abModal");
@@ -793,9 +796,21 @@
   }
   // comprobación del bucle A–B (se llama desde raf en cada frame)
   function abTick() {
-    if (!abActive() || !Engine.playing) return;
+    if (!abActive() || !Engine.playing) {
+      if (_abDip) { _abDip = false; Engine.resetFade(); }
+      return;
+    }
     const pos = Engine.position() || 0;
-    if (pos >= ab.b - 0.02) { DSKControls.seek(ab.a); }
+    const xf = Math.min(abXfade, Math.max(0, (ab.b - ab.a) * 0.4));   // no más del 40% del loop
+    if (xf > 0 && pos < ab.b && pos >= ab.b - xf) {
+      if (!_abDip) { _abDip = true; Engine.fadeRampTo(0, Math.max(0.01, ab.b - pos)); }  // baja a 0 justo en B
+      return;
+    }
+    if (pos >= ab.b - 0.008) {
+      DSKControls.seek(ab.a);
+      if (xf > 0) Engine.fadeFromZero(xf); else Engine.resetFade();   // reentra suave en A
+      _abDip = false;
+    }
   }
 
   /* ---- forma de onda del modal A–B (zoom táctil + arrastre de A/B) ---- */
@@ -950,6 +965,23 @@
     wrap.querySelectorAll("[data-step]").forEach((b) => {
       b.classList.toggle("is-on", Math.abs(parseFloat(b.getAttribute("data-step")) - abStep) < 1e-6);
     });
+  }
+  function setAbXfade(v) { abXfade = Math.max(0, v); try { localStorage.setItem("dsklofi.abxfade", String(abXfade)); } catch (e) {} syncAbXfadeUI(); }
+  function syncAbXfadeUI() {
+    const wrap = $("#abXfadeSel"); if (!wrap) return;
+    wrap.querySelectorAll("[data-xf]").forEach((b) => {
+      b.classList.toggle("is-on", Math.abs(parseFloat(b.getAttribute("data-xf")) - abXfade) < 1e-6);
+    });
+  }
+  let abRepsVal = 2;
+  function syncAbReps() {
+    const wrap = $("#abReps"); if (!wrap) return;
+    let matched = false;
+    wrap.querySelectorAll("[data-reps]").forEach((b) => {
+      const on = parseInt(b.getAttribute("data-reps"), 10) === abRepsVal;
+      b.classList.toggle("is-on", on); if (on) matched = true;
+    });
+    const ci = $("#abRepsCustom"); if (ci && !matched && document.activeElement !== ci) ci.value = String(abRepsVal);
   }
   const SVG_PLAY_SM = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polygon points="8 4.5 20 12 8 19.5"></polygon></svg>';
   const SVG_PAUSE_SM = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14"></rect><rect x="14" y="5" width="4" height="14"></rect></svg>';
@@ -1789,6 +1821,10 @@
     abBind("abBPlus", () => abNudge("b", abStep));
     abBind("abClear", abReset);
     { const ss = $("#abStepSel"); if (ss) ss.addEventListener("click", (e) => { const b = e.target.closest("[data-step]"); if (b) setAbStep(parseFloat(b.getAttribute("data-step"))); }); }
+    { const xs = $("#abXfadeSel"); if (xs) xs.addEventListener("click", (e) => { const b = e.target.closest("[data-xf]"); if (b) setAbXfade(parseFloat(b.getAttribute("data-xf"))); }); }
+    { const rs = $("#abReps"); if (rs) rs.addEventListener("click", (e) => { const b = e.target.closest("[data-reps]"); if (b) { abRepsVal = parseInt(b.getAttribute("data-reps"), 10); const ci = $("#abRepsCustom"); if (ci) ci.value = ""; syncAbReps(); } }); }
+    { const ci = $("#abRepsCustom"); if (ci) ci.addEventListener("input", () => { const v = parseInt(ci.value, 10); if (v >= 1) { abRepsVal = Math.min(64, v); syncAbReps(); } }); }
+    abBind("abExportBtn", () => exportLoop(abRepsVal));
     abInitWave();
     abBind("abPlay", async () => {
       const loaded = playerOnlyMode ? !!nativeAudio.src : !!Engine.buffer;
@@ -2681,6 +2717,120 @@
       for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
       return out;
     } catch (e) { return null; }
+  }
+
+  // abre el modal de progreso de export y devuelve utilidades
+  function openExportProgress() {
+    exportAbort = false; exporting = true;
+    UI.openModal("exportModal");
+    const bar = $("#exportBar"), pct = $("#exportPct"), status = $("#exportStatus"), cancelBtn = $("#exportCancel");
+    if (cancelBtn) {
+      cancelBtn.hidden = false; cancelBtn.disabled = false;
+      cancelBtn.textContent = I18n.t("ex_cancel"); cancelBtn.classList.remove("is-armed");
+      if (cancelBtn._disarm) cancelBtn._disarm();
+    }
+    const setP = (v) => { bar.style.width = Math.round(v * 100) + "%"; pct.textContent = Math.round(v * 100) + "%"; };
+    status.textContent = I18n.t("ex_rendering"); setP(0);
+    return { setP: setP, status: status };
+  }
+
+  // codifica (mp3/wav) + guarda; render ocupa 0–0.6 y la codificación 0.6–1
+  async function encodeAndSave(buffer, baseName, setP, status) {
+    let format = exportFormat;
+    if (format === "mp3" && !Encoder.mp3Ready) { UI.toast(I18n.t("ex_mp3_missing"), "warn"); format = "wav"; }
+    let blob;
+    if (format === "mp3") {
+      status.textContent = I18n.t("ex_encoding");
+      await new Promise((r) => setTimeout(r, 60));
+      blob = await Encoder.mp3(buffer, 128, (v) => setP(0.6 + v * 0.4), () => exportAbort);
+      try {
+        const titleEl = $("#trackName .deck__name-txt"), artistEl = $("#trackArtist");
+        const meta = { title: titleEl ? (titleEl.textContent || "").trim() : "", artist: artistEl ? (artistEl.textContent || "").trim() : "" };
+        if (currentCoverB64) { meta.coverBytes = b64ToBytes(currentCoverB64); meta.coverMime = "image/jpeg"; }
+        if (meta.coverBytes || meta.title || meta.artist) blob = await Encoder.wrapMp3WithTag(blob, meta);
+      } catch (e) {}
+    } else {
+      blob = Encoder.wav(buffer);
+    }
+    if (exportAbort) throw new Error("__cancel__");
+    setP(1);
+    return await Bridge.save(baseName + "." + format, blob);
+  }
+
+  // recorta un AudioBuffer al tramo [sSec, eSec]
+  function sliceBuffer(buf, sSec, eSec) {
+    const sr = buf.sampleRate, ch = buf.numberOfChannels;
+    const s = Math.max(0, Math.floor(sSec * sr)), e = Math.min(buf.length, Math.floor(eSec * sr));
+    const len = Math.max(1, e - s);
+    const out = new AudioBuffer({ numberOfChannels: ch, length: len, sampleRate: sr });
+    for (let c = 0; c < ch; c++) out.copyToChannel(buf.getChannelData(c).slice(s, s + len), c);
+    return out;
+  }
+
+  // concatena 'reps' copias del tramo con crossfade de igual potencia en cada
+  // unión; la última copia añade su cola (ring-out de reverb/delay si la hay).
+  function buildLoopBuffer(seg, bodyLen, reps, xfSec) {
+    const sr = seg.sampleRate, ch = seg.numberOfChannels;
+    bodyLen = Math.min(bodyLen, seg.length);
+    const tailLen = seg.length - bodyLen;
+    let xf = Math.floor(Math.max(0, xfSec) * sr);
+    xf = Math.min(xf, Math.floor(bodyLen / 2));
+    const step = bodyLen - xf;
+    const outLen = step * (reps - 1) + bodyLen + tailLen;
+    const out = new AudioBuffer({ numberOfChannels: ch, length: outLen, sampleRate: sr });
+    for (let c = 0; c < ch; c++) {
+      const src = seg.getChannelData(c), dst = out.getChannelData(c);
+      for (let k = 0; k < reps; k++) {
+        const base = k * step, isLast = (k === reps - 1);
+        const copyLen = isLast ? seg.length : bodyLen;
+        for (let i = 0; i < copyLen; i++) {
+          let g = 1;
+          if (xf > 0) {
+            if (k > 0 && i < xf) g *= Math.sin((i / xf) * Math.PI / 2);
+            if (!isLast && i >= bodyLen - xf) g *= Math.cos(((i - (bodyLen - xf)) / xf) * (Math.PI / 2));
+          }
+          dst[base + i] += src[i] * g;
+        }
+      }
+    }
+    return out;
+  }
+
+  // exporta el loop A–B repetido 'reps' veces (con efectos si estamos en modo
+  // completo; sin efectos en modo reproductor) usando el crossfade configurado.
+  async function exportLoop(reps) {
+    if (!abActive()) { UI.toast(I18n.t("ab_need_ab"), "warn"); return; }
+    reps = Math.max(1, Math.min(64, Math.round(reps || 2)));
+    const ui = openExportProgress(); const setP = ui.setP, status = ui.status;
+    try {
+      let seg, bodyLen;
+      if (Engine.buffer) {                       // modo completo: render con efectos
+        const dur = Engine.buffer.duration || 1;
+        seg = await Engine.render((v) => setP(v * 0.5), { selection: { start: ab.a / dur, end: ab.b / dur }, tapeEffect: false }, () => exportAbort);
+        const speed = Engine.speed || 1;
+        bodyLen = Math.round(((ab.b - ab.a) / speed) * seg.sampleRate);
+      } else {                                   // modo reproductor: tramo crudo (sin efectos)
+        const ok = await ensureAbPeaks();
+        if (!ok || !abPeakBuf) throw new Error("__nobuf__");
+        seg = sliceBuffer(abPeakBuf, ab.a, ab.b);
+        bodyLen = seg.length; setP(0.5);
+      }
+      if (exportAbort) throw new Error("__cancel__");
+      const loopBuf = buildLoopBuffer(seg, bodyLen, reps, abXfade);
+      const base = sanitize(($("#exportName") && $("#exportName").value) || "dsk-lofi") + "-loop";
+      // remapear progreso de codificación al rango 0.5–1
+      const setP2 = (v) => setP(v < 0.6 ? 0.5 + (v / 0.6) * 0.1 : 0.6 + (v - 0.6));
+      const mode = await encodeAndSave(loopBuf, base, setP2, status);
+      exporting = false; UI.closeModal("exportModal");
+      UI.toast(I18n.t(mode === "bridge" ? "ex_done_bridge" : "ex_done_web"), "ok");
+    } catch (err) {
+      exporting = false; UI.closeModal("exportModal");
+      if (err && err.message === "__cancel__") UI.toast(I18n.t("ex_cancelled"));
+      else if (err && err.message === "__nobuf__") UI.error(I18n.t("ab_wave_na"));
+      else { console.warn("loop export failed", err); UI.error(I18n.t("ex_fail")); }
+    } finally {
+      const cb = $("#exportCancel"); if (cb) { cb.disabled = false; cb.textContent = I18n.t("ex_cancel"); cb.classList.remove("is-armed"); }
+    }
   }
 
   async function doExport() {

@@ -794,6 +794,23 @@
       <button class="ab-step__chip" type="button" data-step="0.1">0.1s</button>
       <button class="ab-step__chip" type="button" data-step="0.5">0.5s</button>
     </div>
+    <div class="ab-step" id="abXfadeSel">
+      <span class="ab-step__lbl" data-i18n="ab_xfade">Loop crossfade</span>
+      <button class="ab-step__chip" type="button" data-xf="0" data-i18n="ab_off">Off</button>
+      <button class="ab-step__chip" type="button" data-xf="0.025">25ms</button>
+      <button class="ab-step__chip" type="button" data-xf="0.05">50ms</button>
+      <button class="ab-step__chip" type="button" data-xf="0.1">100ms</button>
+    </div>
+    <div class="ab-export">
+      <span class="ab-step__lbl" data-i18n="ab_export">Export loop</span>
+      <div class="ab-reps" id="abReps">
+        <button class="ab-step__chip" type="button" data-reps="2">2×</button>
+        <button class="ab-step__chip" type="button" data-reps="4">4×</button>
+        <button class="ab-step__chip" type="button" data-reps="8">8×</button>
+        <input class="ab-reps__num" id="abRepsCustom" type="number" min="1" max="64" inputmode="numeric" aria-label="reps">
+        <button class="btn ab-export__btn" id="abExportBtn" type="button" data-i18n="ab_export_btn">EXPORT</button>
+      </div>
+    </div>
     <div class="ab-actions">
       <button class="ab-play" id="abPlay" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polygon points="8 4.5 20 12 8 19.5"></polygon></svg></button>
       <button class="btn btn--ghost ab-clear" id="abClear" type="button" data-i18n="ab_clear">CLEAR</button>

@@ -536,6 +536,10 @@
     .ab-step__chip { padding: 0 var(--space-3); height: 28px; border-radius: var(--radius-pill, 999px); background: var(--color-surface-raised); color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--fs-micro); box-shadow: var(--btn-edge), var(--shadow-inset); }
     .ab-step__chip.is-on { color: var(--acc-ink); background: var(--acc); box-shadow: var(--glow-acc); }
     .ab-step__chip:active { transform: scale(0.94); }
+    .ab-export { margin-top: var(--space-3); }
+    .ab-reps { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-2); flex-wrap: wrap; }
+    .ab-reps__num { width: 56px; height: 28px; border-radius: var(--radius-sm); background: var(--color-surface-raised); color: var(--color-text); box-shadow: var(--shadow-inset); text-align: center; font-family: var(--font-mono); font-size: var(--fs-micro); border: 0; }
+    .ab-export__btn { height: 30px; padding: 0 var(--space-4); margin-left: auto; }
     .ab-play { flex: none; width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--acc); color: var(--acc-ink); box-shadow: var(--glow-acc); }
     .ab-play .ic { width: 20px; height: 20px; }
     .ab-play:active { transform: scale(0.92); }

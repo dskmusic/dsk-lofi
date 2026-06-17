@@ -537,6 +537,26 @@
       } catch (e) { try { this.fadeGain.gain.value = 1; } catch (_) {} }
     },
 
+    // Rampa lineal del fundido de salida hasta 'target' en 'secs' (para suavizar
+    // el salto del loop A–B y evitar clicks).
+    fadeRampTo(target, secs) {
+      if (!this.fadeGain || !this.ctx) return;
+      try {
+        const g = this.fadeGain.gain, t = this.ctx.currentTime;
+        g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
+        g.linearRampToValueAtTime(target, t + Math.max(0.005, secs));
+      } catch (e) {}
+    },
+    // Pone el fundido a 0 y sube a 1 en 'secs' (reentrada tras el salto del loop).
+    fadeFromZero(secs) {
+      if (!this.fadeGain || !this.ctx) return;
+      try {
+        const g = this.fadeGain.gain, t = this.ctx.currentTime;
+        g.cancelScheduledValues(t); g.setValueAtTime(0, t);
+        g.linearRampToValueAtTime(1, t + Math.max(0.005, secs));
+      } catch (e) {}
+    },
+
     _rampNorm() {
       if (!this.normGain || !this.ctx) return;
       let g = 1;
