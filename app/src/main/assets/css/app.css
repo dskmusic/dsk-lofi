@@ -531,6 +531,11 @@
     .ab-nudge:active { transform: scale(0.9); }
     .ab-set { flex: none; padding: 0 var(--space-3); height: 30px; }
     .ab-actions { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-4); }
+    .ab-step { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); flex-wrap: wrap; }
+    .ab-step__lbl { font-size: var(--fs-micro); color: var(--color-text-faint); margin-right: auto; }
+    .ab-step__chip { padding: 0 var(--space-3); height: 28px; border-radius: var(--radius-pill, 999px); background: var(--color-surface-raised); color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--fs-micro); box-shadow: var(--btn-edge), var(--shadow-inset); }
+    .ab-step__chip.is-on { color: var(--acc-ink); background: var(--acc); box-shadow: var(--glow-acc); }
+    .ab-step__chip:active { transform: scale(0.94); }
     .ab-play { flex: none; width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--acc); color: var(--acc-ink); box-shadow: var(--glow-acc); }
     .ab-play .ic { width: 20px; height: 20px; }
     .ab-play:active { transform: scale(0.92); }

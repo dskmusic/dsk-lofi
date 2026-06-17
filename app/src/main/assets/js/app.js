@@ -711,11 +711,46 @@
   /* ===================== A–B REPEAT ===================== */
   // Repite un tramo marcado (A→B). Se abre manteniendo pulsado play/pausa.
   const ab = { on: false, a: null, b: null };
-  const AB_STEP = 0.5;          // paso de ajuste (s)
+  let abStep = 0.1;             // paso de ajuste −/+ (s), configurable
+  try { const v = parseFloat(localStorage.getItem("dsklofi.abstep")); if (v > 0) abStep = v; } catch (e) {}
   let _abHoldFired = false;     // para suprimir el toggle tras la pulsación larga
+  // Fuente de picos para la onda: el buffer del modo completo, o uno decodificado
+  // BAJO DEMANDA al abrir el modal en modo reproductor (no afecta a la reproducción).
+  let abPeakBuf = null, abPeakBlob = null, abPeakToken = 0, abPeakBusy = false;
   function abLoaded() { return playerOnlyMode ? !!nativeAudio.src : !!Engine.buffer; }
   function abDur() { return curDurationOverride > 0 ? curDurationOverride : (Engine.duration || 0); }
+  function abViewDur() { return (abPeakBuf && abPeakBuf.duration) ? abPeakBuf.duration : abDur(); }
+  function abPeakReady() { return !!(Engine.buffer || abPeakBuf); }
   function abActive() { return ab.on && ab.a != null && ab.b != null && ab.b > ab.a; }
+  async function ensureAbPeaks() {
+    if (Engine.buffer) { abPeakBuf = Engine.buffer; return true; }
+    if (abPeakBuf) return true;
+    if (abPeakBusy || !abPeakBlob) return false;
+    abPeakBusy = true;
+    const tok = abPeakToken;
+    try {
+      const arr = await abPeakBlob.arrayBuffer();
+      const buf = await Engine.decode(arr);
+      if (tok === abPeakToken) abPeakBuf = buf;
+    } catch (e) { /* formato no decodificable */ }
+    abPeakBusy = false;
+    return !!abPeakBuf;
+  }
+  // picos máx. de un tramo [s,e] de un AudioBuffer en n cubos
+  function peaksRangeFrom(buf, startSec, endSec, n) {
+    const out = new Float32Array(n);
+    if (!buf || n < 1) return out;
+    const sr = buf.sampleRate, d = buf.getChannelData(0), total = d.length;
+    let s = Math.max(0, Math.floor(startSec * sr)), e = Math.min(total, Math.ceil(endSec * sr));
+    if (e <= s) return out;
+    const block = Math.max(1, Math.floor((e - s) / n));
+    for (let i = 0; i < n; i++) {
+      let max = 0; const a = s + i * block, b = Math.min(a + block, e);
+      for (let j = a; j < b; j += 4) { const v = Math.abs(d[j]); if (v > max) max = v; }
+      out[i] = max;
+    }
+    return out;
+  }
   function fmtAB(s) {
     s = Math.max(0, s || 0);
     const m = Math.floor(s / 60), sec = Math.floor(s % 60), d = Math.floor((s - Math.floor(s)) * 10);
@@ -733,25 +768,27 @@
   function abSetA() { if (!abLoaded()) return; ab.a = Engine.position() || 0; if (ab.b != null && ab.b <= ab.a) ab.b = null; abRefresh(); abZoom(); }
   function abSetB() { if (!abLoaded()) return; const p = Engine.position() || 0; if (ab.a == null) ab.a = 0; if (p <= ab.a) return; ab.b = p; abRefresh(); abZoom(); }
   function abNudge(which, delta) {
-    const dur = abDur();
+    const dur = abViewDur();
     if (which === "a") {
       if (ab.a == null) return;
-      const hi = ab.b != null ? ab.b - 0.1 : (dur || ab.a + delta);
+      const hi = ab.b != null ? ab.b - 0.05 : (dur || ab.a + delta);
       ab.a = Math.max(0, Math.min(ab.a + delta, hi));
     } else {
       if (ab.b == null) return;
-      const lo = ab.a != null ? ab.a + 0.1 : 0;
+      const lo = ab.a != null ? ab.a + 0.05 : 0;
       ab.b = Math.max(lo, Math.min(ab.b + delta, dur || ab.b + delta));
     }
     abRefresh(); abZoom();
   }
   function abModalOpen() { const m = $("#abModal"); return !!(m && m.classList.contains("modal--open")); }
   function openAbModal() {
-    abZoom();
-    abRefresh();
+    abPeakBuf = Engine.buffer || abPeakBuf;
+    abZoom(); abRefresh(); syncAbStepUI();
     const ap = $("#abPlay");
     if (ap) ap.innerHTML = Engine.playing ? SVG_PAUSE_SM : SVG_PLAY_SM;
     UI.openModal("abModal");
+    // decodificar la onda bajo demanda (modo reproductor) sin bloquear
+    ensureAbPeaks().then((ok) => { if (ok) { abWaveKey = ""; abZoom(); } });
     requestAnimationFrame(() => { abSizeCanvas(); abDrawWave(); });
   }
   // comprobación del bucle A–B (se llama desde raf en cada frame)
@@ -761,14 +798,16 @@
     if (pos >= ab.b - 0.02) { DSKControls.seek(ab.a); }
   }
 
-  /* ---- forma de onda del modal A–B (zoom + arrastre táctil) ---- */
+  /* ---- forma de onda del modal A–B (zoom táctil + arrastre de A/B) ---- */
   let abWaveC = null, abWaveX = null;
   let abView = { start: 0, end: 0 };
   let abWavePeaks = null, abWaveKey = "";
-  let abDrag = null;            // "a" | "b" | null
+  let abDrag = null;                 // "a" | "b" | null  (arrastre de un punto ya fijado)
+  const abPtrs = new Map();          // pointerId -> {x,y,sx,sy}
+  let abPinch = null;                // {d0, span0, midTime}
   const abClamp = (v, a, b) => Math.max(a, Math.min(v, b));
   function abZoom() {
-    const dur = abDur();
+    const dur = abViewDur();
     if (!dur) { abView = { start: 0, end: 0 }; abWaveKey = ""; return; }
     if (ab.a != null && ab.b != null) {
       const m = Math.max(0.5, Math.min((ab.b - ab.a) * 0.6, 5));
@@ -778,7 +817,7 @@
     } else {
       abView = { start: 0, end: dur };
     }
-    abWaveKey = ""; // forzar recomputo de picos
+    abWaveKey = "";
   }
   function abSizeCanvas() {
     if (!abWaveC) return false;
@@ -796,92 +835,121 @@
     const f = abClamp((clientX - r.left) / (r.width || 1), 0, 1);
     return abView.start + f * (abView.end - abView.start);
   }
+  function abNote(txt) {
+    const x = abWaveX, W = abWaveC.width, H = abWaveC.height;
+    x.clearRect(0, 0, W, H);
+    x.fillStyle = cssVar("--color-text-faint") || "#888";
+    x.globalAlpha = 0.6; x.textAlign = "center"; x.textBaseline = "middle";
+    x.font = (H * 0.16) + "px sans-serif";
+    x.fillText(txt, W / 2, H / 2);
+    x.globalAlpha = 1; x.textAlign = "start";
+  }
   function abDrawWave() {
     if (!abWaveC || !abWaveX) return;
     if (!abSizeCanvas()) return;
     const W = abWaveC.width, H = abWaveC.height, x = abWaveX;
-    x.clearRect(0, 0, W, H);
-    const dur = abDur();
-    if (!Engine.buffer || dur <= 0) {
-      x.fillStyle = cssVar("--color-text-faint") || "#888";
-      x.globalAlpha = 0.6; x.textAlign = "center"; x.textBaseline = "middle";
-      x.font = (H * 0.18) + "px sans-serif";
-      x.fillText(I18n.t("ab_wave_na"), W / 2, H / 2);
-      x.globalAlpha = 1; x.textAlign = "start";
+    const dur = abViewDur();
+    if (!abPeakReady() || dur <= 0) {
+      abNote(I18n.t((abPeakBusy || abPeakBlob) ? "ab_wave_load" : "ab_wave_na"));
       return;
     }
+    x.clearRect(0, 0, W, H);
     const N = Math.max(8, Math.floor(W / 2));
-    const key = abView.start.toFixed(2) + "_" + abView.end.toFixed(2) + "_" + N;
-    if (abWaveKey !== key) { abWavePeaks = Engine.getPeaksRange(abView.start, abView.end, N) || new Float32Array(N); abWaveKey = key; }
+    const key = abView.start.toFixed(2) + "_" + abView.end.toFixed(2) + "_" + N + "_" + (abPeakBuf ? abPeakBuf.length : 0);
+    if (abWaveKey !== key) { abWavePeaks = peaksRangeFrom(abPeakBuf, abView.start, abView.end, N); abWaveKey = key; }
     const acc = cssVar("--acc") || "#6cf";
     const muted = cssVar("--color-text-faint") || "#888";
     const aX = ab.a != null ? abTimeToX(ab.a, W) : null;
     const bX = ab.b != null ? abTimeToX(ab.b, W) : null;
-    // zona A–B sombreada
-    if (aX != null && bX != null && bX > aX) {
-      x.fillStyle = acc; x.globalAlpha = 0.12; x.fillRect(aX, 0, bX - aX, H); x.globalAlpha = 1;
-    }
-    // barras
+    if (aX != null && bX != null && bX > aX) { x.fillStyle = acc; x.globalAlpha = 0.12; x.fillRect(aX, 0, bX - aX, H); x.globalAlpha = 1; }
     const bw = W / N;
     for (let i = 0; i < N; i++) {
       const h = Math.max(H * 0.04, abWavePeaks[i] * H * 0.92);
-      const bx = i * bw;
       const t = abView.start + (i / N) * (abView.end - abView.start);
       const inAB = (ab.a != null && ab.b != null && t >= ab.a && t <= ab.b);
-      x.fillStyle = inAB ? acc : muted;
-      x.globalAlpha = inAB ? 0.95 : 0.5;
-      x.fillRect(bx, (H - h) / 2, Math.max(1, bw - 1), h);
+      x.fillStyle = inAB ? acc : muted; x.globalAlpha = inAB ? 0.95 : 0.5;
+      x.fillRect(i * bw, (H - h) / 2, Math.max(1, bw - 1), h);
     }
     x.globalAlpha = 1;
-    // playhead
     const pos = Engine.position() || 0;
-    if (pos >= abView.start && pos <= abView.end) {
-      x.fillStyle = acc; x.globalAlpha = 0.85; x.fillRect(abTimeToX(pos, W) - 1, 0, 2, H); x.globalAlpha = 1;
-    }
-    // tiradores A (cian) y B (ámbar)
-    const drawHandle = (hx, col) => {
-      x.fillStyle = col; x.fillRect(hx - 1.5, 0, 3, H);
-      x.beginPath(); x.arc(hx, H * 0.5, Math.max(6, H * 0.1), 0, Math.PI * 2); x.fill();
-    };
-    if (aX != null) drawHandle(aX, cssVar("--neon-cyan") || acc);
-    if (bX != null) drawHandle(bX, cssVar("--neon-amber") || acc);
+    if (pos >= abView.start && pos <= abView.end) { x.fillStyle = acc; x.globalAlpha = 0.85; x.fillRect(abTimeToX(pos, W) - 1, 0, 2, H); x.globalAlpha = 1; }
+    // tiradores A/B: SOLO líneas (sin círculo)
+    if (aX != null) { x.fillStyle = cssVar("--neon-cyan") || acc; x.fillRect(aX - 1.5, 0, 3, H); }
+    if (bX != null) { x.fillStyle = cssVar("--neon-amber") || acc; x.fillRect(bX - 1.5, 0, 3, H); }
   }
   function abInitWave() {
     abWaveC = $("#abWave");
     if (!abWaveC) return;
     abWaveX = abWaveC.getContext("2d");
+    const HANDLE_TH = 22;   // px para "agarrar" un punto ya fijado
     const onDown = (e) => {
-      if (!Engine.buffer) return;
-      const dur = abDur(); if (dur <= 0) return;
+      abPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
+      try { abWaveC.setPointerCapture(e.pointerId); } catch (_) {}
+      if (abPtrs.size === 2) {                 // pellizco para zoom
+        const p = [...abPtrs.values()];
+        const d0 = Math.abs(p[0].x - p[1].x) || 1;
+        const r = abWaveC.getBoundingClientRect();
+        const midF = abClamp(((p[0].x + p[1].x) / 2 - r.left) / (r.width || 1), 0, 1);
+        abPinch = { d0: d0, span0: (abView.end - abView.start) || 1, midTime: abView.start + midF * ((abView.end - abView.start) || 1) };
+        abDrag = null;
+        e.preventDefault(); return;
+      }
+      // un dedo: solo iniciar arrastre si está cerca de un punto YA fijado
+      if (!abPeakReady()) return;
       const r = abWaveC.getBoundingClientRect();
       const px = e.clientX - r.left;
-      const tt = abXToTime(e.clientX);
-      if (ab.a != null && ab.b != null) {
-        const aPx = (ab.a - abView.start) / (abView.end - abView.start) * r.width;
-        const bPx = (ab.b - abView.start) / (abView.end - abView.start) * r.width;
-        abDrag = Math.abs(px - aPx) <= Math.abs(px - bPx) ? "a" : "b";   // arrastra el más cercano
-      } else if (ab.a == null) {
-        ab.a = abClamp(tt, 0, dur); if (ab.b != null && ab.a >= ab.b) ab.b = null; abRefresh(); abDrag = "a";
-      } else if (ab.b == null) {
-        if (tt > ab.a) { ab.b = abClamp(tt, ab.a + 0.1, dur); abRefresh(); abDrag = "b"; }
-      }
-      if (abDrag) { try { abWaveC.setPointerCapture(e.pointerId); } catch (_) {} }
-      e.preventDefault();
+      const aPx = ab.a != null ? (ab.a - abView.start) / ((abView.end - abView.start) || 1) * r.width : -1e9;
+      const bPx = ab.b != null ? (ab.b - abView.start) / ((abView.end - abView.start) || 1) * r.width : -1e9;
+      const dA = Math.abs(px - aPx), dB = Math.abs(px - bPx);
+      if (ab.a != null && dA <= HANDLE_TH && dA <= dB) abDrag = "a";
+      else if (ab.b != null && dB <= HANDLE_TH) abDrag = "b";
+      else abDrag = null;          // lejos de A/B → será un toque (seek) al soltar
     };
     const onMove = (e) => {
-      if (!abDrag) return;
-      const dur = abDur();
-      const tt = abXToTime(e.clientX);
-      if (abDrag === "a") ab.a = abClamp(tt, 0, ab.b != null ? ab.b - 0.1 : dur);
-      else ab.b = abClamp(tt, ab.a != null ? ab.a + 0.1 : 0, dur);
-      abRefresh();
-      e.preventDefault();
+      const p = abPtrs.get(e.pointerId); if (p) { p.x = e.clientX; p.y = e.clientY; }
+      if (abPinch && abPtrs.size >= 2) {
+        const pts = [...abPtrs.values()];
+        const d = Math.abs(pts[0].x - pts[1].x) || 1;
+        const dur = abViewDur();
+        let span = abClamp(abPinch.span0 * (abPinch.d0 / d), 0.2, dur || abPinch.span0);
+        const r = abWaveC.getBoundingClientRect();
+        const midF = abClamp(((pts[0].x + pts[1].x) / 2 - r.left) / (r.width || 1), 0, 1);
+        let start = abClamp(abPinch.midTime - midF * span, 0, Math.max(0, (dur || span) - span));
+        abView = { start: start, end: start + span }; abWaveKey = "";
+        e.preventDefault(); return;
+      }
+      if (abDrag) {
+        const dur = abViewDur();
+        const tt = abXToTime(e.clientX);
+        if (abDrag === "a") ab.a = abClamp(tt, 0, ab.b != null ? ab.b - 0.05 : dur);
+        else ab.b = abClamp(tt, ab.a != null ? ab.a + 0.05 : 0, dur);
+        abRefresh();
+        e.preventDefault();
+      }
     };
-    const onUp = () => { if (abDrag) { abDrag = null; abZoom(); } };
+    const onUp = (e) => {
+      const p = abPtrs.get(e.pointerId);
+      const moved = p ? (Math.abs(p.x - p.sx) + Math.abs(p.y - p.sy)) : 999;
+      abPtrs.delete(e.pointerId);
+      if (abPinch && abPtrs.size < 2) abPinch = null;
+      if (abDrag) { abDrag = null; return; }
+      // toque simple (un dedo, sin moverse, lejos de A/B) → seek
+      if (abPtrs.size === 0 && !abPinch && moved < 8 && abPeakReady()) {
+        DSKControls.seek(abClamp(abXToTime(e.clientX), 0, abViewDur()));
+      }
+    };
     abWaveC.addEventListener("pointerdown", onDown);
     abWaveC.addEventListener("pointermove", onMove);
     abWaveC.addEventListener("pointerup", onUp);
-    abWaveC.addEventListener("pointercancel", () => { abDrag = null; });
+    abWaveC.addEventListener("pointercancel", (e) => { abPtrs.delete(e.pointerId); abDrag = null; abPinch = null; });
+  }
+  // selector de paso −/+ (0.01 / 0.1 / 0.5 s)
+  function setAbStep(v) { abStep = v; try { localStorage.setItem("dsklofi.abstep", String(v)); } catch (e) {} syncAbStepUI(); }
+  function syncAbStepUI() {
+    const wrap = $("#abStepSel"); if (!wrap) return;
+    wrap.querySelectorAll("[data-step]").forEach((b) => {
+      b.classList.toggle("is-on", Math.abs(parseFloat(b.getAttribute("data-step")) - abStep) < 1e-6);
+    });
   }
   const SVG_PLAY_SM = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><polygon points="8 4.5 20 12 8 19.5"></polygon></svg>';
   const SVG_PAUSE_SM = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14"></rect><rect x="14" y="5" width="4" height="14"></rect></svg>';
@@ -1466,6 +1534,7 @@
   async function loadFile(track, autoplay, prepareOnly) {
     if (!track) return;
     try { abReset(); } catch (e) {}   // A–B no aplica a otra pista
+    abPeakBuf = null; abPeakBlob = null; abPeakToken++;   // invalidar onda A–B
     // compat: si llega un File directo (web antiguo), envolverlo
     if (track instanceof File) track = { name: track.name, file: track };
     // YouTube: requiere modo reproductor (audio remoto). Cambia sin recargar.
@@ -1548,6 +1617,7 @@
         setArtist("");   // hasta saber si el tag trae intérprete
         $("#timeCur").textContent = fmt.time(0);
         peaks = null;   // sin forma de onda decodificada en modo nativo
+        abPeakBlob = (!track.ytId && coverBlob instanceof Blob) ? coverBlob : null;  // onda A–B bajo demanda
         setPlayIcon(false);
         // carátula + tags (no bloquea la reproducción)
         if (coverBlob) coverBlob.arrayBuffer()
@@ -1713,11 +1783,12 @@
     const abBind = (id, fn) => { const b = $("#" + id); if (b) b.addEventListener("click", fn); };
     abBind("abSetA", abSetA);
     abBind("abSetB", abSetB);
-    abBind("abAMinus", () => abNudge("a", -AB_STEP));
-    abBind("abAPlus", () => abNudge("a", AB_STEP));
-    abBind("abBMinus", () => abNudge("b", -AB_STEP));
-    abBind("abBPlus", () => abNudge("b", AB_STEP));
+    abBind("abAMinus", () => abNudge("a", -abStep));
+    abBind("abAPlus", () => abNudge("a", abStep));
+    abBind("abBMinus", () => abNudge("b", -abStep));
+    abBind("abBPlus", () => abNudge("b", abStep));
     abBind("abClear", abReset);
+    { const ss = $("#abStepSel"); if (ss) ss.addEventListener("click", (e) => { const b = e.target.closest("[data-step]"); if (b) setAbStep(parseFloat(b.getAttribute("data-step"))); }); }
     abInitWave();
     abBind("abPlay", async () => {
       const loaded = playerOnlyMode ? !!nativeAudio.src : !!Engine.buffer;
