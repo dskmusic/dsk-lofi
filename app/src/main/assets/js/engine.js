@@ -356,7 +356,10 @@
     async init() {
       if (this.ctx) return;
       const AC = window.AudioContext || window.webkitAudioContext;
-      this.ctx = new AC({ latencyHint: "interactive" });
+      // "playback" da un buffer de salida mayor → audio mucho más estable en
+      // WebView/móvil (evita cortes/clicks por underrun); la latencia extra es
+      // inaudible para un reproductor de música.
+      this.ctx = new AC({ latencyHint: "playback" });
       try {
         await this.ctx.audioWorklet.addModule(WORKLET_URL);
         this.workletOK = true;

@@ -675,6 +675,38 @@
   let plIndex = -1;       // current index
   let shuffle = false;
   let shuffleBag = [];    // remaining indices for shuffle order
+  let repeatMode = 0;     // 0 = off · 1 = repetir actual · 2 = repetir todo
+
+  function updateRepeatBtn() {
+    const b = $("#btnRepeat"); if (!b) return;
+    const st = repeatMode === 1 ? "one" : (repeatMode === 2 ? "all" : "off");
+    b.setAttribute("data-state", st);
+    const lbl = repeatMode === 1 ? "pl_repeat_one" : (repeatMode === 2 ? "pl_repeat_all" : "pl_repeat_off");
+    try { b.setAttribute("aria-label", I18n.t(lbl)); } catch (e) {}
+  }
+  function setRepeat(mode) {
+    repeatMode = ((mode % 3) + 3) % 3;
+    try { Engine.loop = (repeatMode === 1); } catch (e) {}   // "repetir actual" = bucle de la fuente
+    try { localStorage.setItem("dsklofi.repeat", String(repeatMode)); } catch (e) {}
+    updateRepeatBtn();
+  }
+  // decide el avance al terminar una pista según el modo de repetición
+  // (el modo "repetir actual" se gestiona con Engine.loop, no llega aquí)
+  function advanceOnEnd() {
+    if (!playlist.length) { setPlayIcon(false); return; }
+    if (repeatMode === 2) {                       // repetir todo
+      if (playlist.length === 1) loadFile(playlist[plIndex], true);
+      else gotoNext(true);
+      return;
+    }
+    // off: avanzar salvo que sea el final de la cola/baraja
+    if (playlist.length === 1) { setPlayIcon(false); return; }
+    if (shuffle) {
+      if (shuffleBag.length) gotoNext(true); else setPlayIcon(false);
+    } else {
+      if (plIndex < playlist.length - 1) gotoNext(true); else setPlayIcon(false);
+    }
+  }
   let currentSource = { type: "none", name: "" };   // fuente en curso (file|folder|list)
 
   /* avisa a la UI (mini-lista / library.js) de cualquier cambio en la cola */
@@ -1695,6 +1727,11 @@
       if (shuffle) buildShuffleBag(true);
     });
 
+    // repetición: off → repetir actual → repetir todo
+    try { const rm = parseInt(localStorage.getItem("dsklofi.repeat") || "0", 10); setRepeat(isNaN(rm) ? 0 : rm); } catch (e) { setRepeat(0); }
+    const repBtn = $("#btnRepeat");
+    if (repBtn) repBtn.addEventListener("click", () => setRepeat(repeatMode + 1));
+
     const dice = $("#btnRnd");
     dice.addEventListener("click", () => {
       randomizeAll();
@@ -1722,8 +1759,8 @@
         try { if (window.AndroidMedia && window.AndroidMedia.stopNotification) window.AndroidMedia.stopNotification(); } catch (e) {}
         return;
       }
-      if (playlist.length > 1 && !Engine.loop) { gotoNext(true); }
-      else setPlayIcon(false);
+      if (Engine.loop) { /* repetir actual: la fuente hace bucle, no llega aquí */ }
+      else advanceOnEnd();
     });
 
     /* seek on waveform */
@@ -2282,19 +2319,27 @@
   let _lastMediaPush = 0;
   function raf(now) {
     const t = now || performance.now();
-    updateReels(t);
-    drawViz();
+    // ¿se ven realmente los visuales del reproductor? Si la pantalla está
+    // oculta o hay un modal encima (letras, karaoke, biblioteca…), NO dibujamos:
+    // así liberamos el hilo principal para el audio y evitamos artefactos.
+    // La reproducción, la notificación y el guardado siguen funcionando igual.
+    const visuals = !document.hidden && !document.body.classList.contains("has-modal");
+    if (visuals) { updateReels(t); drawViz(); }
     // refrescar la posición de la notificación cada ~4s mientras suena
     if (Engine.playing && t - _lastMediaPush > 4000) { _lastMediaPush = t; try { pushMediaState(true); } catch (e) {} }
     tickEndOfTrackFade();
     if (playerOnlyMode) {
       // modo reproductor: no hay buffer; actualizar tiempo y barra de seek
-      $("#timeCur").textContent = fmt.time(Engine.position());
-      if (typeof window.__poUpdate === "function") window.__poUpdate();
+      if (visuals) {
+        $("#timeCur").textContent = fmt.time(Engine.position());
+        if (typeof window.__poUpdate === "function") window.__poUpdate();
+      }
       if (Engine.playing && t - _lastQSave > 3000) { _lastQSave = t; saveQueue(); }
     } else if (Engine.buffer) {
-      drawWave();
-      $("#timeCur").textContent = fmt.time(Engine.position());
+      if (visuals) {
+        drawWave();
+        $("#timeCur").textContent = fmt.time(Engine.position());
+      }
       // persistir posición de la cola cada ~3s mientras suena
       if (Engine.playing && t - _lastQSave > 3000) { _lastQSave = t; saveQueue(); }
     }
@@ -2893,9 +2938,8 @@
     nativeAudio.addEventListener("ended", () => {
       if (!playerOnlyMode) return;
       if (endOfTrackTimer) { endOfTrackTimer = false; updateTimerBadge(); setPlayIcon(false); if (_eotFading) { setOutputVolumeFactor(1); _eotFading = false; } return; }
-      if (playlist.length > 1 && !Engine.loop) gotoNext(true);
-      else if (Engine.loop) { nativeAudio.currentTime = 0; nativeAudio.play(); }
-      else setPlayIcon(false);
+      if (Engine.loop) { nativeAudio.currentTime = 0; nativeAudio.play(); }
+      else advanceOnEnd();
     });
     // El stream/archivo de la pista actual ya no existe o no se puede leer
     // (p. ej. se borró desde el explorador de archivos). Saltar y limpiar.
