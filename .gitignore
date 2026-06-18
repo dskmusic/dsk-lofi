@@ -15,3 +15,7 @@
 local.properties
 .backups/
 .backups/
+
+
+# Ignorar archivos comprimidos RAR
+*.rar
