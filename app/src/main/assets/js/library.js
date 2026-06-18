@@ -368,6 +368,17 @@
         catch (e) { UI.toast(T("on_dl_error")); }
       });
     }
+    if (ctx.kind === "queue") {
+      const total = DSKQueue.snapshot().items.length;
+      if (ctx.index > 0) add("m_move_up", () => { DSKQueue.move(ctx.index, ctx.index - 1); });
+      if (ctx.index < total - 1) add("m_move_down", () => { DSKQueue.move(ctx.index, ctx.index + 1); });
+    }
+    if (ctx.kind === "list") {
+      const l = findList(ctx.listId);
+      const total = l ? l.items.length : 0;
+      if (ctx.index > 0) add("m_move_up", () => { listMove(ctx.listId, ctx.index, -1); });
+      if (ctx.index < total - 1) add("m_move_down", () => { listMove(ctx.listId, ctx.index, 1); });
+    }
     if (ctx.kind === "queue") add("m_remove", () => { DSKQueue.remove(ctx.index); UI.toast(T("q_removed")); }, true);
     if (ctx.kind === "list") add("m_remove", () => { listRemoveTrack(ctx.listId, ctx.index); }, true);
     UI.openModal("trackMenuModal");
