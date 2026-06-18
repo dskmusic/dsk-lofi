@@ -49,46 +49,37 @@
   const folderStatsPending = {};
   let statsSeq = 0;
 
-  // --- IndexedDB mínima (persiste entre sesiones) ---
-  const STATS_STORE = "folderStats";
-  let _statsDbPromise = null;
-  function statsDB() {
-    if (_statsDbPromise) return _statsDbPromise;
-    _statsDbPromise = new Promise((res) => {
-      try {
-        if (typeof indexedDB === "undefined") return res(null);
-        const r = indexedDB.open("dsklofi", 1);
-        r.onupgradeneeded = () => {
-          const db = r.result;
-          if (!db.objectStoreNames.contains(STATS_STORE)) db.createObjectStore(STATS_STORE);
-        };
-        r.onsuccess = () => res(r.result);
-        r.onerror = () => res(null);
-      } catch (e) { res(null); }
-    });
-    return _statsDbPromise;
+  // --- almacén persistente en /DSKlofi (sobrevive a borrados de datos /
+  //     reinstalaciones). Mismo comportamiento: {count,dur} por clave; el nativo
+  //     solo recalcula la duración si cambia el nº de archivos. ---
+  const STATS_FILE = "folderStats.json";
+  let statsStore = null;        // {clave: {count,dur}}
+  let _statsWriteTO = 0;
+  function statsEnsureLoaded() {
+    if (statsStore) return;
+    statsStore = {};
+    try {
+      if (hasBridge("readAppData")) {
+        const raw = window.DSKBridge.readAppData(STATS_FILE);
+        if (raw) statsStore = JSON.parse(raw) || {};
+      } else {
+        const raw = localStorage.getItem("dsklofi." + STATS_FILE);   // respaldo (navegador/PWA)
+        if (raw) statsStore = JSON.parse(raw) || {};
+      }
+    } catch (e) { statsStore = {}; }
   }
-  function idbGet(key) {
-    return statsDB().then((db) => new Promise((res) => {
-      if (!db) return res(null);
+  function statsPersist() {
+    try { clearTimeout(_statsWriteTO); } catch (e) {}
+    _statsWriteTO = setTimeout(() => {
       try {
-        const rq = db.transaction(STATS_STORE, "readonly").objectStore(STATS_STORE).get(key);
-        rq.onsuccess = () => res(rq.result || null);
-        rq.onerror = () => res(null);
-      } catch (e) { res(null); }
-    }));
+        const json = JSON.stringify(statsStore || {});
+        if (hasBridge("writeAppData")) window.DSKBridge.writeAppData(STATS_FILE, json);
+        else localStorage.setItem("dsklofi." + STATS_FILE, json);
+      } catch (e) {}
+    }, 400);
   }
-  function idbSet(key, val) {
-    return statsDB().then((db) => new Promise((res) => {
-      if (!db) return res(false);
-      try {
-        const tx = db.transaction(STATS_STORE, "readwrite");
-        tx.objectStore(STATS_STORE).put(val, key);
-        tx.oncomplete = () => res(true);
-        tx.onerror = () => res(false);
-      } catch (e) { res(false); }
-    }));
-  }
+  function idbGet(key) { statsEnsureLoaded(); return Promise.resolve(statsStore[key] || null); }
+  function idbSet(key, val) { statsEnsureLoaded(); statsStore[key] = val; statsPersist(); return Promise.resolve(true); }
 
   function fmtDurShort(sec) {
     sec = Math.round(sec || 0); if (sec <= 0) return "";
@@ -256,6 +247,7 @@
   /* ============================ PESTAÑAS ============================ */
   const VIEW_KEY = "dsklofi.lastview";
   let activeTab = "now";
+  let firstLibOpen = true;   // primera apertura de la librería en esta sesión (se reinicia en cada arranque)
   function saveViewState() {
     try {
       const st = { tab: activeTab };
@@ -304,6 +296,11 @@
     if (Sel.active) { Sel.active = false; Sel.kind = null; Sel.ids.clear(); selUpdateUI(); }
     if (window.DSKYoutubeUI && window.DSKYoutubeUI.exitSelect) { try { window.DSKYoutubeUI.exitSelect(); } catch (e) {} }
     DSKQueue.open();
+    // primera vez que se abre la librería tras arrancar la app → pestaña Archivos
+    if (firstLibOpen) {
+      firstLibOpen = false;
+      if (explorerSupported()) { expStack = []; setTab("explore"); return; }
+    }
     const st = loadViewState();
     if (st && st.tab === "explore" && Array.isArray(st.path) && st.path.length && explorerSupported()) {
       restoreExplorerPath(st.path);
@@ -525,6 +522,7 @@
     const addAllBtn = $("#libExpAddAll"); if (addAllBtn) addAllBtn.hidden = !hasAudios || selecting;
     const selBtn = $("#libExpSelect"); if (selBtn) selBtn.hidden = !hasAudios;
     const addRootBtn = $("#libAddRoot"); if (addRootBtn) addRootBtn.hidden = !atRoot;
+    const addCurBtn = $("#libAddCur"); if (addCurBtn) addCurBtn.hidden = atRoot || selecting || isCurFolderRoot();
   }
 
   function renderExplorer(scrollTarget) {
@@ -544,9 +542,17 @@
       $("#libPath").textContent = T("ex_roots");
       list.innerHTML = "";
       updateExplorerToolbar();
-      if (!roots.length) { list.innerHTML = '<div class="lib-empty">' + T("ex_no_roots") + "</div>"; return; }
+      if (!roots.length) { const e = document.createElement("div"); e.className = "lib-empty"; e.textContent = T("ex_no_roots"); list.appendChild(e); return; }
       const ordered = sortRootsByOrder(roots);
-      ordered.forEach((r, i) => list.appendChild(rootRow(r, i, ordered.length)));
+      const movable = ordered.filter((r) => !r.fixed);
+      ordered.forEach((r) => {
+        let canUp = false, canDown = false;
+        if (!r.fixed) {
+          const mi = movable.findIndex((x) => x.uri === r.uri);
+          canUp = mi > 0; canDown = mi >= 0 && mi < movable.length - 1;
+        }
+        list.appendChild(rootRow(r, canUp, canDown));
+      });
       list.scrollTop = keep;
       return;
     }
@@ -705,35 +711,62 @@
   function rootOrderGet() { try { return JSON.parse(localStorage.getItem("dsklofi.rootOrder") || "[]"); } catch (e) { return []; } }
   function rootOrderSet(a) { try { localStorage.setItem("dsklofi.rootOrder", JSON.stringify(a)); } catch (e) {} }
   function sortRootsByOrder(roots) {
+    const fixed = roots.filter((r) => r.fixed);
+    const rest = roots.filter((r) => !r.fixed);
     const ord = rootOrderGet();
-    return roots.slice().sort((a, b) => {
+    rest.sort((a, b) => {
       let ia = ord.indexOf(a.uri), ib = ord.indexOf(b.uri);
       if (ia < 0) ia = Infinity; if (ib < 0) ib = Infinity;
       return ia - ib;
     });
+    return fixed.concat(rest);   // fijas siempre arriba
   }
   function moveRoot(uri, dir) {
     let roots = [];
     try { roots = JSON.parse(window.DSKBridge.listRoots() || "[]"); } catch (e) {}
-    const sorted = sortRootsByOrder(roots).map((r) => r.uri);
-    const i = sorted.indexOf(uri); if (i < 0) return;
-    const j = i + dir; if (j < 0 || j >= sorted.length) return;
-    const t = sorted[i]; sorted[i] = sorted[j]; sorted[j] = t;
-    rootOrderSet(sorted);
+    const rest = sortRootsByOrder(roots).filter((r) => !r.fixed).map((r) => r.uri);
+    const i = rest.indexOf(uri); if (i < 0) return;          // las fijas no se mueven
+    const j = i + dir; if (j < 0 || j >= rest.length) return;
+    const t = rest[i]; rest[i] = rest[j]; rest[j] = t;
+    rootOrderSet(rest);
     renderExplorer();
   }
 
-  function rootRow(r, idx, count) {
+  function quickAddRow() {
+    const wrap = document.createElement("div");
+    wrap.className = "lib-quickadd";
+    const items = [
+      { which: "download", label: T("ex_add_download") },
+      { which: "music", label: T("ex_add_music") },
+      { which: "dsklofi", label: "DSKlofi" },
+      { which: "root", label: T("ex_add_storage") }
+    ];
+    items.forEach((it) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "lib-quickadd__chip"; b.textContent = "＋ " + it.label;
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        let ok = false;
+        try { if (hasBridge("addCommonRoot")) ok = !!window.DSKBridge.addCommonRoot(it.which); } catch (e2) {}
+        if (ok) { UI.toast(T("ex_root_added")); expStack = []; renderExplorer(); }
+        else UI.toast(T("ex_add_fail"), "warn");
+      });
+      wrap.appendChild(b);
+    });
+    return wrap;
+  }
+
+  function rootRow(r, canUp, canDown) {
     const row = document.createElement("div");
     row.className = "lib-row lib-row--folder" + (r.pending ? " lib-row--pending" : "");
-    const up = (typeof idx === "number" && idx > 0);
-    const down = (typeof idx === "number" && typeof count === "number" && idx < count - 1);
+    const moveBtns = r.fixed ? "" : (
+      '<button class="lib-row__move" data-dir="up" type="button" aria-label="' + T("ex_move_up") + '"' + (canUp ? '' : ' disabled') + '>&#9650;</button>' +
+      '<button class="lib-row__move" data-dir="down" type="button" aria-label="' + T("ex_move_down") + '"' + (canDown ? '' : ' disabled') + '>&#9660;</button>');
     row.innerHTML = '<span class="lib-row__ic">' + (r.pending ? IC.relink : IC.folder) + '</span>' +
       '<span class="lib-row__name"></span>' +
       (r.pending ? '<span class="lib-row__sub lib-row__sub--pending">' + T("ex_pending") + '</span>' : '') +
-      '<button class="lib-row__move" data-dir="up" type="button" aria-label="' + T("ex_move_up") + '"' + (up ? '' : ' disabled') + '>&#9650;</button>' +
-      '<button class="lib-row__move" data-dir="down" type="button" aria-label="' + T("ex_move_down") + '"' + (down ? '' : ' disabled') + '>&#9660;</button>' +
-      '<button class="lib-row__act" type="button" aria-label="' + T("ex_remove_root") + '">&times;</button>';
+      moveBtns +
+      (r.fixed ? '' : '<button class="lib-row__act" type="button" aria-label="' + T("ex_remove_root") + '">&times;</button>');
     const nameEl = row.querySelector(".lib-row__name");
     nameEl.textContent = r.name;
     nameEl.title = r.pending ? (r.name + " — " + T("ex_pending_hint")) : r.name;
@@ -746,7 +779,8 @@
     } else {
       row.addEventListener("click", () => enterFolder(r.uri, r.name));
     }
-    row.querySelector(".lib-row__act").addEventListener("click", (e) => {
+    const actBtn = row.querySelector(".lib-row__act");
+    if (actBtn) actBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       if (hasBridge("removeRoot")) { window.DSKBridge.removeRoot(r.uri); UI.toast(T("ex_root_removed")); renderExplorer(); }
     });
@@ -785,6 +819,27 @@
       });
     }
     return row;
+  }
+
+  function currentFolder() { return expStack.length ? expStack[expStack.length - 1] : null; }
+  function isCurFolderRoot() {
+    const lvl = currentFolder(); if (!lvl) return false;
+    let roots = []; try { roots = JSON.parse(window.DSKBridge.listRoots() || "[]"); } catch (e) {}
+    return roots.some((r) => r.uri === lvl.uri);
+  }
+  function addCurrentFolderRoot() {
+    const lvl = currentFolder(); if (!lvl) return;
+    let ok = false;
+    try {
+      if (lvl.uri.indexOf("file:") === 0) {
+        const path = decodeURIComponent(lvl.uri.replace(/^file:\/\//, ""));
+        if (hasBridge("addPathRoot")) ok = !!window.DSKBridge.addPathRoot(path);
+      } else if (hasBridge("addRootByUri")) {
+        ok = !!window.DSKBridge.addRootByUri(lvl.uri);
+      }
+    } catch (e) {}
+    if (ok) { UI.toast(T("ex_root_added")); updateExplorerToolbar(); }
+    else UI.toast(T("ex_add_fail"), "warn");
   }
 
   function enterFolder(uri, name) {
@@ -1019,10 +1074,13 @@
 
   function exportSettings() {
     const settings = {};
-    SETTINGS_KEYS.forEach((k) => {
-      const v = localStorage.getItem(k);
-      if (v !== null) settings[k] = v;
-    });
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.indexOf("dsklofi.") === 0 || k === LISTS_KEY)) {
+        const v = localStorage.getItem(k);
+        if (v !== null) settings[k] = v;
+      }
+    }
     let roots = [];
     try { roots = JSON.parse(hasBridge("listRoots") ? window.DSKBridge.listRoots() : "[]") || []; } catch (e) {}
     const payload = { schema: "dsklofi-settings", version: 1, settings: settings, roots: roots };
@@ -1047,8 +1105,8 @@
         if (!data || data.schema !== "dsklofi-settings" || !data.settings) throw 0;
         const ok = await UI.confirm({ title: T("cfg_import_title"), message: T("cfg_import_msg"), danger: true, confirmLabel: T("list_import") });
         if (!ok) return;
-        SETTINGS_KEYS.forEach((k) => {
-          if (Object.prototype.hasOwnProperty.call(data.settings, k)) {
+        Object.keys(data.settings).forEach((k) => {
+          if (k.indexOf("dsklofi.") === 0 || k === LISTS_KEY) {
             try { localStorage.setItem(k, data.settings[k]); } catch (e) {}
           }
         });
@@ -1143,11 +1201,18 @@
 
   /* ============================ INIT ============================ */
   function bind() {
-    $$(".lib-tab").forEach((b) => b.addEventListener("click", () => setTab(b.getAttribute("data-tab"))));
+    $$(".lib-tab").forEach((b) => b.addEventListener("click", () => {
+      const tab = b.getAttribute("data-tab");
+      if (tab === "explore" && activeTab === "explore" && expStack.length && !explorerSearchActive()) {
+        expStack = []; renderExplorer(); saveViewState(); return;
+      }
+      setTab(tab);
+    }));
     const up = $("#libUp"); if (up) up.addEventListener("click", explorerUp);
     const addRoot = $("#libAddRoot"); if (addRoot) addRoot.addEventListener("click", () => { if (hasBridge("addExplorerRoot")) window.DSKBridge.addExplorerRoot(); });
 
     // "añadir todo" (carpeta actual del explorador → lista)
+    const addCur = $("#libAddCur"); if (addCur) addCur.addEventListener("click", (e) => { e.stopPropagation(); addCurrentFolderRoot(); });
     const addAllBtn = $("#libExpAddAll");
     if (addAllBtn) addAllBtn.addEventListener("click", () => {
       const audios = currentAudios();
@@ -1253,7 +1318,7 @@
     const optHelp = $("#optHelp");
     if (optHelp) optHelp.addEventListener("click", () => { UI.closeModal("optionsModal"); renderHelp(); UI.openModal("helpModal"); });
     // el Kotlin avisa al añadir/quitar carpeta raíz
-    window.DSKRootsChanged = function () { UI.toast(T("ex_root_added")); if (DSKQueue.isOpen() && activeTab === "explore" && !expStack.length) renderExplorer(); };
+    window.DSKRootsChanged = function () { UI.toast(T("ex_root_added")); if (activeTab === "explore") { expStack = []; if (typeof rootScroll !== "undefined") rootScroll = 0; renderExplorer(); } };
     // API mínima para que la pestaña Online añada resultados a una lista
     window.DSKLists = { add: openListPick };
 

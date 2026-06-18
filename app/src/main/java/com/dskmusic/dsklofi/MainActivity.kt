@@ -550,6 +550,7 @@ class MainActivity : Activity() {
         webView.addJavascriptInterface(DownloadsBridge(), "DSKDownloads")
         webView.addJavascriptInterface(UpdateChecker(this), "DSKUpdate")
         webView.addJavascriptInterface(StemsBridge(this, webView), "DSKStemsBridge")
+        ensureDefaultRoots()
     }
 
     private fun injectFileInputFix() {
@@ -1315,6 +1316,52 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun listRoots(): String = rootsJson()
 
+        // Añade una carpeta por RUTA real (sin SAF). Funciona con "acceso a todos
+        // los archivos" y permite carpetas que SAF bloquea (Download, raíz, etc.).
+        @JavascriptInterface
+        fun addPathRoot(path: String): Boolean {
+            return try {
+                val f = java.io.File(path)
+                if (!f.isDirectory) return false
+                val cur = loadPathRoots().toMutableList()
+                if (cur.none { it == f.absolutePath }) cur.add(f.absolutePath)
+                savePathRoots(cur)
+                true
+            } catch (e: Exception) { false }
+        }
+
+        // Lee/escribe texto en /DSKlofi/<name> (silencioso). Para datos que deben
+        // sobrevivir a borrados de datos / reinstalaciones (p. ej. caché de stats).
+        @JavascriptInterface
+        fun readAppData(name: String): String {
+            return try {
+                val f = java.io.File(dskDir(), sanitizeName(name))
+                if (f.isFile) f.readText(Charsets.UTF_8) else ""
+            } catch (e: Exception) { "" }
+        }
+        @JavascriptInterface
+        fun writeAppData(name: String, content: String): Boolean {
+            return try {
+                val dir = dskDir(); if (!dir.exists()) dir.mkdirs()
+                java.io.File(dir, sanitizeName(name)).writeText(content, Charsets.UTF_8)
+                true
+            } catch (e: Exception) { false }
+        }
+
+        // Atajos para carpetas comunes que SAF no deja seleccionar.
+        @JavascriptInterface
+        fun addCommonRoot(which: String): Boolean {
+            val root = Environment.getExternalStorageDirectory()
+            val path = when (which) {
+                "download" -> java.io.File(root, "Download").absolutePath
+                "music" -> java.io.File(root, "Music").absolutePath
+                "dsklofi" -> java.io.File(root, "DSKlofi").absolutePath
+                "root" -> root.absolutePath
+                else -> return false
+            }
+            return addPathRoot(path)
+        }
+
         // Quita una raíz guardada (o pendiente) y libera su permiso persistente.
         @JavascriptInterface
         fun removeRoot(uriString: String) {
@@ -1322,21 +1369,31 @@ class MainActivity : Activity() {
             // persistente del árbol: así las pistas de cualquier playlist que
             // apunten a archivos dentro de esa carpeta siguen abriéndose aunque
             // la carpeta ya no aparezca en Archivos.
+            if (uriString.startsWith("file:")) {
+                val p = Uri.parse(uriString).path ?: ""
+                if (isFixedRoot(p)) return   // fijas: no se pueden quitar
+                savePathRoots(loadPathRoots().filter { it != p })
+                return
+            }
             saveRoots(loadRoots().filter { it.toString() != uriString })
             savePendingRoots(loadPendingRoots().filter { it != uriString })
         }
 
         // Hijos (carpetas + audios) de una carpeta del árbol como JSON [{name,uri,dir}].
         @JavascriptInterface
-        fun browse(folderUriString: String): String = listChildrenJson(Uri.parse(folderUriString))
+        fun browse(folderUriString: String): String =
+            if (folderUriString.startsWith("file:")) listChildrenFileJson(Uri.parse(folderUriString).path ?: "")
+            else listChildrenJson(Uri.parse(folderUriString))
 
         // Versión asíncrona de browse(): no bloquea el hilo del WebView (carpetas
         // grandes). Responde por window.DSKBridge.__browseResult(reqId, json).
         @JavascriptInterface
         fun browseAsync(folderUriString: String, reqId: String) {
-            val uri = Uri.parse(folderUriString)
             browsePool.execute {
-                val json = try { listChildrenJson(uri) } catch (e: Exception) { "[]" }
+                val json = try {
+                    if (folderUriString.startsWith("file:")) listChildrenFileJson(Uri.parse(folderUriString).path ?: "")
+                    else listChildrenJson(Uri.parse(folderUriString))
+                } catch (e: Exception) { "[]" }
                 val payload = org.json.JSONObject.quote(json)
                 runJs("window.DSKBridge&&window.DSKBridge.__browseResult&&window.DSKBridge.__browseResult(${org.json.JSONObject.quote(reqId)},$payload)")
             }
@@ -1350,6 +1407,29 @@ class MainActivity : Activity() {
         // Responde por window.DSKBridge.__folderStats(reqId, json{count,dur}).
         @JavascriptInterface
         fun folderStats(folderUriString: String, knownCount: Int, reqId: String) {
+            if (folderUriString.startsWith("file:")) {
+                val dirPath = Uri.parse(folderUriString).path ?: ""
+                browsePool.execute {
+                    var count = 0; var durMs = 0L; var skipDur = false
+                    try {
+                        val audios = (java.io.File(dirPath).listFiles() ?: arrayOf())
+                            .filter { it.isFile && AUDIO_EXT.containsMatchIn(it.name) }
+                        count = audios.size
+                        if (knownCount >= 0 && knownCount == count) skipDur = true
+                        else for (af in audios) {
+                            val mmr = android.media.MediaMetadataRetriever()
+                            try {
+                                mmr.setDataSource(af.absolutePath)
+                                durMs += mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                            } catch (e: Exception) {} finally { try { mmr.release() } catch (e: Exception) {} }
+                        }
+                    } catch (e: Exception) {}
+                    val durOut = if (skipDur) -1.0 else durMs / 1000.0
+                    val json = org.json.JSONObject().put("count", count).put("dur", durOut).toString()
+                    runJs("window.DSKBridge&&window.DSKBridge.__folderStats&&window.DSKBridge.__folderStats(${org.json.JSONObject.quote(reqId)},${org.json.JSONObject.quote(json)})")
+                }
+                return
+            }
             val uri = Uri.parse(folderUriString)
             browsePool.execute {
                 var count = 0
@@ -1839,6 +1919,26 @@ class MainActivity : Activity() {
         id.substringAfterLast('/').substringAfterLast(':').ifEmpty { id }
     } catch (e: Exception) { treeUri.lastPathSegment ?: "Carpeta" }
 
+    // Asegura SIEMPRE Almacenamiento interno y Descargas como raíces por ruta
+    // (no se pueden borrar desde la UI, así que no se pierden). Se re-añaden si
+    // faltan, sin duplicar y respetando el orden existente.
+    private fun ensureDefaultRoots() {
+        try {
+            val root = Environment.getExternalStorageDirectory()
+            val want = listOf(root.absolutePath, java.io.File(root, "Download").absolutePath)
+            val cur = loadPathRoots().toMutableList()
+            var changed = false
+            want.forEach { p -> if (java.io.File(p).isDirectory && cur.none { it == p }) { cur.add(p); changed = true } }
+            if (changed) savePathRoots(cur)
+        } catch (e: Exception) {}
+    }
+
+    // ¿es una de las carpetas fijas por defecto? (no borrables)
+    private fun isFixedRoot(path: String): Boolean = try {
+        val root = Environment.getExternalStorageDirectory()
+        path == root.absolutePath || path == java.io.File(root, "Download").absolutePath
+    } catch (e: Exception) { false }
+
     private fun rootsJson(): String {
         val arr = org.json.JSONArray()
         val granted = loadRoots()
@@ -1851,6 +1951,62 @@ class MainActivity : Activity() {
                 arr.put(org.json.JSONObject().put("uri", uriStr).put("name", treeDisplayName(Uri.parse(uriStr))).put("dir", true).put("pending", true))
             }
         }
+        // raíces por RUTA (sin SAF) — siempre accesibles con "todos los archivos"
+        loadPathRoots().forEach { p ->
+            val f = java.io.File(p)
+            arr.put(org.json.JSONObject()
+                .put("uri", Uri.fromFile(f).toString())
+                .put("name", nameForPath(p))
+                .put("dir", true).put("pending", false).put("path", p)
+                .put("fixed", isFixedRoot(p)))
+        }
+        return arr.toString()
+    }
+
+    private fun nameForPath(path: String): String = try {
+        val root = Environment.getExternalStorageDirectory().absolutePath
+        if (path == root) "Almacenamiento interno" else java.io.File(path).name.ifBlank { path }
+    } catch (e: Exception) { java.io.File(path).name }
+
+    // Carpeta de la app /DSKlofi (raíz del almacenamiento) para datos persistentes.
+    private fun dskDir(): java.io.File = java.io.File(Environment.getExternalStorageDirectory(), "DSKlofi")
+    private fun sanitizeName(name: String): String = name.replace(Regex("[\\\\/\\s\"']"), "_").ifBlank { "data" }
+
+    private fun savePathRoots(paths: List<String>) {
+        try {
+            val sp = getSharedPreferences("dsklofi", Context.MODE_PRIVATE)
+            val arr = org.json.JSONArray(); paths.forEach { arr.put(it) }
+            sp.edit().putString("explorerPathRoots", arr.toString()).apply()
+        } catch (e: Exception) {}
+    }
+
+    private fun loadPathRoots(): List<String> = try {
+        val raw = getSharedPreferences("dsklofi", Context.MODE_PRIVATE).getString("explorerPathRoots", null)
+        if (raw == null) emptyList()
+        else { val arr = org.json.JSONArray(raw); (0 until arr.length()).map { arr.getString(it) } }
+    } catch (e: Exception) { emptyList() }
+
+    // Hijos (carpetas + audios) de una carpeta por RUTA real, como JSON
+    // [{name,uri,dir,path}]. uri = file://… → el reproductor lo abre por ruta.
+    private fun listChildrenFileJson(dirPath: String): String {
+        val arr = org.json.JSONArray()
+        try {
+            val kids = java.io.File(dirPath).listFiles() ?: return "[]"
+            val dirs = ArrayList<org.json.JSONObject>()
+            val files = ArrayList<org.json.JSONObject>()
+            for (f in kids) {
+                if (f.isHidden) continue
+                if (f.isDirectory) {
+                    dirs.add(org.json.JSONObject().put("name", f.name).put("uri", Uri.fromFile(f).toString()).put("dir", true).put("path", f.absolutePath))
+                } else if (AUDIO_EXT.containsMatchIn(f.name)) {
+                    files.add(org.json.JSONObject().put("name", f.name).put("uri", Uri.fromFile(f).toString()).put("dir", false).put("path", f.absolutePath).put("mime", mimeForName(f.name)))
+                }
+            }
+            dirs.sortBy { it.optString("name").lowercase() }
+            files.sortBy { it.optString("name").lowercase() }
+            dirs.forEach { arr.put(it) }
+            files.forEach { arr.put(it) }
+        } catch (e: Exception) {}
         return arr.toString()
     }
 

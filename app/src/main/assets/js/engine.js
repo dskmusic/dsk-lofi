@@ -537,6 +537,16 @@
       } catch (e) { try { this.fadeGain.gain.value = 1; } catch (_) {} }
     },
 
+    // Silencia la salida AL INSTANTE (para pausas/reanudaciones que provoca el
+    // sistema —otra app, micrófono, foco de audio— y que no pasan por play/pause).
+    muteNow() {
+      if (!this.fadeGain || !this.ctx) return;
+      try { const g = this.fadeGain.gain, t = this.ctx.currentTime; g.cancelScheduledValues(t); g.setValueAtTime(0.0001, t); } catch (e) {}
+    },
+    // marca de tiempo de la última operación iniciada por NOSOTROS (play/pause/
+    // stop): los listeners del elemento ignoran el anti-click si fue cosa nuestra.
+    markOp() { this._engineOpTS = Date.now(); },
+
     // Fundido de salida corto que se PUEDE esperar (para cambiar de pista sin clic).
     fadeOutNow(secs) {
       return new Promise((resolve) => {
@@ -653,6 +663,7 @@
 
     async play(opts) {
       if (this.nativeMode) {
+        this.markOp();
         if (!this._audio || !this._audio.src) return;
         try { clearTimeout(this._fadeRestoreTO); } catch (e) {}   // anula el restaurado pendiente de pause/stop
         await this.resume();
@@ -725,6 +736,7 @@
     // Devuelve una promesa que resuelve cuando el source ya está muerto.
     pause() {
       if (this.nativeMode) {
+        this.markOp();
         const a = this._audio;
         if (a) {
           try {
@@ -802,6 +814,7 @@
 
     stop() {
       if (this.nativeMode) {
+        this.markOp();
         try { clearTimeout(this._fadeRestoreTO); } catch (e) {}
         try { const g = this.fadeGain.gain, t = this.ctx.currentTime; g.cancelScheduledValues(t); g.setValueAtTime(0.0001, t); } catch (e) {}   // mudo antes del corte (anti-click)
         if (this._audio) { try { this._audio.pause(); this._audio.currentTime = 0; } catch (e) {} }
@@ -844,8 +857,23 @@
 
     seek(frac) {
       if (this.nativeMode) {
-        if (this._audio && isFinite(this._audio.duration)) {
-          this._audio.currentTime = Math.max(0, Math.min(frac, 1)) * this._audio.duration;
+        const a = this._audio;
+        if (a && isFinite(a.duration)) {
+          const target = Math.max(0, Math.min(frac, 1)) * a.duration;
+          if (!a.paused) {
+            // NO pausamos (eso paraba la reproducción): silenciamos el flujo,
+            // recolocamos, y subimos el volumen SOLO cuando el <audio> ya volvió
+            // a emitir tras el salto (con colchón), para que no se cuele el clic.
+            this.muteNow();
+            try { clearTimeout(this._seekFadeTO); } catch (e) {}
+            a.currentTime = target;
+            const lift = () => { try { a.removeEventListener("seeked", onSeeked); } catch (e) {} try { this.fadeFromZero(0.06); } catch (e) { this.resetFade(); } };
+            const onSeeked = () => { try { clearTimeout(this._seekFadeTO); } catch (e) {} this._seekFadeTO = setTimeout(lift, 70); };
+            try { a.addEventListener("seeked", onSeeked, { once: true }); } catch (e) {}
+            this._seekFadeTO = setTimeout(lift, 320);   // por si no llega 'seeked'
+          } else {
+            a.currentTime = target;   // pausado: sin audio, sin clic
+          }
         }
         return;
       }
@@ -855,6 +883,44 @@
       this._offset = Math.max(0, Math.min(frac, 1)) * this.duration;
       // glide corto de cinta al reposicionar si tape está activo
       if (wasPlaying) this.play({ short: true });
+    },
+
+    // ---- Scrub continuo (arrastrar el dedo por la barra) sin chasquidos ----
+    // En vez de hacer un fundido por cada posición (se solapan y chasquean),
+    // se silencia UNA vez al empezar, se mueve en mudo, y se sube al soltar.
+    seekScrubStart() {
+      this._scrubbing = true;
+      try { clearTimeout(this._seekFadeTO); } catch (e) {}
+      this.muteNow();   // silencia el flujo (sin pausar); se sube al soltar
+    },
+    seekScrub(frac) {
+      const f = Math.max(0, Math.min(frac, 1));
+      if (this.nativeMode) {
+        const a = this._audio;
+        if (a && isFinite(a.duration)) { try { a.currentTime = f * a.duration; } catch (e) {} }
+        return;
+      }
+      // DSP: recolocar el offset (y el reloj) para que el cabezal siga al dedo,
+      // sin reiniciar la fuente (sigue en mudo, sin clic). El seek real va al soltar.
+      if (this.buffer && this.ctx) { this._offset = f * this.duration; this._startedAt = this.ctx.currentTime; }
+    },
+    seekScrubEnd(frac) {
+      this._scrubbing = false;
+      const f = Math.max(0, Math.min(frac, 1));
+      if (this.nativeMode) {
+        const a = this._audio;
+        if (a && isFinite(a.duration)) { try { a.currentTime = f * a.duration; } catch (e) {} }
+        if (a && !a.paused) {
+          const lift = () => { try { a.removeEventListener("seeked", onS); } catch (e) {} try { this.fadeFromZero(0.06); } catch (e) { this.resetFade(); } };
+          const onS = () => { try { clearTimeout(this._seekFadeTO); } catch (e) {} this._seekFadeTO = setTimeout(lift, 70); };
+          try { a.addEventListener("seeked", onS, { once: true }); } catch (e) {}
+          this._seekFadeTO = setTimeout(lift, 320);
+        } else { this.resetFade(); }
+        return;
+      }
+      // DSP: seek real (con glide corto) y subir el fundido
+      this.seek(f);
+      try { this.fadeFromZero(0.06); } catch (e) { this.resetFade(); }
     },
 
     setTapeLive(v) { this.tapeLive = !!v; },

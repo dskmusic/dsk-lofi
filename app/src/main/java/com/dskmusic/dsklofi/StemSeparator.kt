@@ -66,7 +66,8 @@ class StemSeparator(
         outDir: File,
         modelFile: File,
         wantInstrumental: Boolean,
-        wantVocals: Boolean
+        wantVocals: Boolean,
+        swap: Boolean = false
     ): Result {
         onProgress(2, "decode")
         val stereo = decodePcm(sourceUri, sourcePath) ?: throw IllegalStateException("decode")
@@ -141,16 +142,25 @@ class StemSeparator(
             var voxFile: File? = null
             val baseNm = outDir.name   // = título saneado (la carpeta lleva el nombre de la canción)
             onProgress(95, "save")
-            if (wantInstrumental) {
-                instFile = File(outDir, "$baseNm (instrumental).wav")
-                writeWavStereo(instFile, instL, instR, n)   // sin copia: longitud n
-            }
-            if (wantVocals) {
-                // voz = mezcla − instrumental (la mezcla está en mpL/mpR desplazada 'trim')
+            // "directo" = salida del modelo; "residual" = mezcla − salida.
+            // Sin swap: instrumental=directo, voz=residual. Con swap: al revés
+            // (para modelos que dan las pistas invertidas).
+            val instFileT = File(outDir, "$baseNm (instrumental).wav")
+            val voxFileT = File(outDir, "$baseNm (voz).wav")
+            val residual = {
                 val vL = FloatArray(n); val vR = FloatArray(n)
                 for (s in 0 until n) { vL[s] = mpL[trim + s] - instL[s]; vR[s] = mpR[trim + s] - instR[s] }
-                voxFile = File(outDir, "$baseNm (voz).wav")
-                writeWavStereo(voxFile, vL, vR, n)
+                Pair(vL, vR)
+            }
+            if (wantInstrumental) {
+                instFile = instFileT
+                if (!swap) writeWavStereo(instFile, instL, instR, n)
+                else { val (vL, vR) = residual(); writeWavStereo(instFile, vL, vR, n) }
+            }
+            if (wantVocals) {
+                voxFile = voxFileT
+                if (!swap) { val (vL, vR) = residual(); writeWavStereo(voxFile, vL, vR, n) }
+                else writeWavStereo(voxFile, instL, instR, n)
             }
             onProgress(100, "save")
             return Result(instFile, voxFile)

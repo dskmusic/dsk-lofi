@@ -219,6 +219,7 @@ class StemsBridge(
         val wantInst = save?.optBoolean("instrumental", true) ?: true
         val wantVox = save?.optBoolean("vocals", true) ?: true
         val modelName = opts.optString("model", "")
+        val swap = opts.optBoolean("swap", false)
 
         StemsService.start(activity)
 
@@ -244,7 +245,8 @@ class StemsBridge(
                     outDir = outDir,
                     modelFile = modelFile,
                     wantInstrumental = wantInst,
-                    wantVocals = wantVox
+                    wantVocals = wantVox,
+                    swap = swap
                 )
 
                 if (cancelFlag) { post("DSKStemsError", "'cancel'"); return@Thread }

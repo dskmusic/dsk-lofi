@@ -2212,19 +2212,23 @@
     /* seek on waveform */
     const wave = $("#wave");
     let seeking = false;
-    const seekTo = (e) => {
+    let scrubFrac = 0;
+    const fracOf = (e) => {
       const r = wave.getBoundingClientRect();
-      const frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-      Engine.seek(frac);
+      return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
     };
     wave.addEventListener("pointerdown", (e) => {
-      if (!Engine.buffer) return;
+      if (!Engine.buffer && !(Engine.nativeMode && nativeAudio.src)) return;
       seeking = true;
       wave.setPointerCapture(e.pointerId);
-      seekTo(e);
+      Engine.seekScrubStart();
+      scrubFrac = fracOf(e);
+      Engine.seekScrub(scrubFrac);
     });
-    wave.addEventListener("pointermove", (e) => { if (seeking) seekTo(e); });
-    wave.addEventListener("pointerup", () => { seeking = false; });
+    wave.addEventListener("pointermove", (e) => { if (seeking) { scrubFrac = fracOf(e); Engine.seekScrub(scrubFrac); } });
+    const endScrub = () => { if (!seeking) return; seeking = false; Engine.seekScrubEnd(scrubFrac); pushMediaState(Engine.playing); };
+    wave.addEventListener("pointerup", endScrub);
+    wave.addEventListener("pointercancel", endScrub);
   }
 
   /* ========================= RANDOMIZE ========================= */
@@ -3497,8 +3501,25 @@
     syncModeUI();
 
     // eventos del <audio> nativo → sincronizar UI
-    nativeAudio.addEventListener("play", () => { keepAliveOn(); if (playerOnlyMode) setPlayIcon(true); });
-    nativeAudio.addEventListener("pause", () => { if (playerOnlyMode && !nativeAudio.ended) setPlayIcon(false); });
+    // Anti-click para pausas/reanudaciones que provoca el SISTEMA (otra app
+    // suena, se abre el micrófono, cambia el foco de audio): no pasan por
+    // Engine.play/pause, así que el fundido hay que aplicarlo aquí. Si el cambio
+    // lo hicimos nosotros (markOp reciente), se ignora (ya lo gestiona el Engine).
+    let extMuted = false;
+    const extDriven = () => (Date.now() - (Engine._engineOpTS || 0) > 350);
+    nativeAudio.addEventListener("play", () => {
+      keepAliveOn();
+      if (playerOnlyMode) setPlayIcon(true);
+      if (extDriven()) { try { Engine.muteNow(); } catch (e) {} extMuted = true; }
+      else extMuted = false;
+    });
+    nativeAudio.addEventListener("playing", () => {
+      if (extMuted) { extMuted = false; try { Engine.fadeFromZero(0.05); } catch (e) { try { Engine.resetFade(); } catch (_) {} } }
+    });
+    nativeAudio.addEventListener("pause", () => {
+      if (playerOnlyMode && !nativeAudio.ended) setPlayIcon(false);
+      if (extDriven()) { try { Engine.muteNow(); } catch (e) {} extMuted = true; }  // silencia restos; al reanudar se sube con fundido
+    });
     nativeAudio.addEventListener("ended", () => {
       if (!playerOnlyMode) return;
       if (endOfTrackTimer) { endOfTrackTimer = false; updateTimerBadge(); setPlayIcon(false); if (_eotFading) { setOutputVolumeFactor(1); _eotFading = false; } return; }
@@ -3516,20 +3537,24 @@
       if (!checkStorageOnFail(track)) skipMissingTrack(track, true);
     });
 
-    // barra de seek del modo reproductor
+    // barra de seek del modo reproductor — scrub anti-click (igual que play/pausa):
+    // silenciar al empezar, mover en mudo, y subir con un fundido al soltar.
     const poRange = $("#poSeekRange");
     let poSeeking = false;
     if (poRange) {
+      const poFrac = () => (poRange.value / 1000);
+      const startScrub = () => { if (poSeeking) return; poSeeking = true; Engine.seekScrubStart(); };
+      const endScrub = () => { if (!poSeeking) return; poSeeking = false; Engine.seekScrubEnd(poFrac()); pushMediaState(Engine.playing); };
+      poRange.addEventListener("pointerdown", startScrub);
       poRange.addEventListener("input", () => {
-        poSeeking = true;
+        startScrub();   // por si el toque no disparó pointerdown
         const dur = Engine.duration || 0;
-        if (dur > 0) $("#poTimeCur").textContent = fmt.time((poRange.value / 1000) * dur);
+        if (dur > 0) $("#poTimeCur").textContent = fmt.time(poFrac() * dur);
+        Engine.seekScrub(poFrac());   // recoloca en mudo; el tiempo sigue al dedo
       });
-      poRange.addEventListener("change", () => {
-        const frac = poRange.value / 1000;
-        Engine.seek(frac);
-        poSeeking = false;
-      });
+      poRange.addEventListener("change", endScrub);
+      poRange.addEventListener("pointerup", endScrub);
+      poRange.addEventListener("pointercancel", endScrub);
     }
     // exponer para el raf
     window.__poUpdate = function () {
@@ -4088,6 +4113,25 @@
     const HF_SEANGHAY = "https://huggingface.co/seanghay/uvr_models/resolve/main/";
     const HF_POLITREES = "https://huggingface.co/Politrees/UVR_resources/resolve/main/MDXNet_models/";
     const SEANGHAY_SET = ["UVR-MDX-NET-Inst_1.onnx","UVR-MDX-NET-Inst_2.onnx","UVR-MDX-NET-Inst_3.onnx","UVR-MDX-NET-Inst_HQ_1.onnx","UVR-MDX-NET-Inst_HQ_2.onnx","UVR-MDX-NET-Inst_Main.onnx"];
+    // tiempos de referencia por defecto (s) — medidos por Victor con el mismo trozo
+    const MODEL_TIME = {
+      "UVR_MDXNET_3_9662.onnx": 8, "UVR_MDXNET_KARA.onnx": 8,
+      "UVR_MDXNET_2_9682.onnx": 9, "UVR_MDXNET_1_9703.onnx": 9, "UVR_MDXNET_Main.onnx": 9,
+      "UVR-MDX-NET-Inst_Main.onnx": 16,
+      "UVR-MDX-NET-Inst_3.onnx": 23, "UVR-MDX-NET-Inst_1.onnx": 23,
+      "UVR-MDX-NET-Inst_HQ_1.onnx": 24, "UVR-MDX-NET-Inst_HQ_2.onnx": 24,
+      "UVR-MDX-NET-Inst_2.onnx": 27
+    };
+    function timeFor(file) { return (file in MODEL_TIME) ? MODEL_TIME[file] : null; }
+    // invertir voz/instrumental para modelos que las dan al revés (lo decide el usuario)
+    function getSwaps() { try { return JSON.parse(localStorage.getItem("dsklofi.stemSwap") || "[]"); } catch (e) { return []; } }
+    function isSwap(file) { return getSwaps().indexOf(file) >= 0; }
+    function toggleSwap(file) {
+      const a = getSwaps(); const i = a.indexOf(file);
+      if (i >= 0) a.splice(i, 1); else a.push(file);
+      try { localStorage.setItem("dsklofi.stemSwap", JSON.stringify(a)); } catch (e) {}
+      refreshModels();
+    }
     // principal (GitHub) + espejos; el nativo prueba en orden hasta que uno funcione
     function urlsFor(file) {
       const list = [MODEL_BASE + file];
@@ -4174,6 +4218,12 @@
 
       let chosenLabel = null, chosenFile = "";
       const shown = {};
+      const byTime = (a, b) => {
+        const ta = timeFor(a.file), tb = timeFor(b.file);
+        const va = (ta == null ? Infinity : ta), vb = (tb == null ? Infinity : tb);
+        if (va !== vb) return va - vb;
+        return a.name.localeCompare(b.name);
+      };
       const addRow = (e) => {
         const fav = favs.indexOf(e.file) >= 0;
         const row = buildRow({ name: e.name, desc: e.desc, star: e.star, file: e.file, urls: e.urls, installed: e.installed, fav: fav });
@@ -4182,16 +4232,17 @@
       };
       const groupLabel = (key) => { const gl = document.createElement("div"); gl.className = "stm-tierlabel"; gl.textContent = I18n.t(key); panel.appendChild(gl); };
 
-      // 1) Favoritos (instalados y marcados), arriba del todo
-      const favEntries = entries.filter((e) => e.installed && favs.indexOf(e.file) >= 0);
+      // 1) Favoritos (instalados y marcados), arriba del todo, ordenados por tiempo
+      const favEntries = entries.filter((e) => e.installed && favs.indexOf(e.file) >= 0).sort(byTime);
       if (favEntries.length) { groupLabel("stm_tier_fav"); favEntries.forEach(addRow); }
 
-      // 2) resto por grupos, sin repetir los ya mostrados como favoritos
-      const order = MODEL_CATALOG.map((g) => g.tier).concat(["stm_tier_yours"]);
-      order.forEach((tier) => {
-        const inTier = entries.filter((e) => e.group === tier && !shown[e.file]);
-        if (inTier.length) { groupLabel(tier); inTier.forEach(addRow); }
-      });
+      // 2) catálogo: lista única ordenada por tiempo (menor a mayor)
+      const mainEntries = entries.filter((e) => e.group !== "stm_tier_yours" && !shown[e.file]).sort(byTime);
+      mainEntries.forEach(addRow);
+
+      // 3) tuyos / otros al final
+      const yours = entries.filter((e) => e.group === "stm_tier_yours" && !shown[e.file]).sort(byTime);
+      if (yours.length) { groupLabel("stm_tier_yours"); yours.forEach(addRow); }
 
       if (!chosenFile) {
         const firstInst = panel.querySelector(".stm-mrow[data-installed='1']");
@@ -4199,13 +4250,6 @@
       }
       setChosen(chosenFile, chosenLabel);
       markSelected(chosenFile);
-    }
-
-    function getTimes() { try { return JSON.parse(localStorage.getItem("dsklofi.stemTimes") || "{}"); } catch (e) { return {}; } }
-    function setTime(file, val) {
-      const t = getTimes();
-      if (val === "" || val == null) delete t[file]; else t[file] = val;
-      try { localStorage.setItem("dsklofi.stemTimes", JSON.stringify(t)); } catch (e) {}
     }
 
     function buildRow(o) {
@@ -4223,20 +4267,24 @@
       const nm = document.createElement("div"); nm.className = "stm-mrow__name";
       nm.innerHTML = o.star ? (o.name + ' <span class="star" title="' + I18n.t("stm_recommended") + '">★</span>') : o.name;
       l1.appendChild(nm);
-      const tin = document.createElement("input");
-      tin.type = "text"; tin.inputMode = "numeric"; tin.className = "stm-time-in";
-      tin.placeholder = I18n.t("stm_time_ph"); tin.value = getTimes()[o.file] || "";
-      tin.title = I18n.t("stm_time_hint");
-      tin.addEventListener("click", (e) => e.stopPropagation());
-      tin.addEventListener("change", () => setTime(o.file, tin.value.trim()));
-      l1.appendChild(tin);
+      const tv = document.createElement("span");
+      tv.className = "stm-time-val";
+      const tt = timeFor(o.file);
+      tv.textContent = (tt != null) ? (tt + " s") : "—";
+      tv.title = I18n.t("stm_time_hint");
+      l1.appendChild(tv);
       row.appendChild(l1);
 
-      // ---- línea 2: descripción + estado/botones ----
+      // ---- línea 2: descripción + invertir + estado/botones ----
       const l2 = document.createElement("div"); l2.className = "stm-mrow__l2";
       const desc = document.createElement("div"); desc.className = "stm-mrow__desc"; desc.textContent = o.desc || "";
       l2.appendChild(desc);
       const right = document.createElement("div"); right.className = "stm-mrow__right";
+      const sw = document.createElement("button");
+      sw.type = "button"; sw.className = "stm-swap" + (isSwap(o.file) ? " stm-swap--on" : "");
+      sw.textContent = "⇄"; sw.title = I18n.t("stm_swap");
+      sw.addEventListener("click", (e) => { e.stopPropagation(); toggleSwap(o.file); });
+      right.appendChild(sw);
       if (o.installed) {
         const b = document.createElement("span"); b.className = "stm-badge stm-badge--ok"; b.textContent = I18n.t("stm_installed"); right.appendChild(b);
         const del = document.createElement("button"); del.type = "button"; del.className = "stm-delbtn"; del.textContent = "🗑"; del.title = I18n.t("stm_delete");
@@ -4384,7 +4432,7 @@
         uri: t.uri || null, nativeIndex: (typeof t.nativeIndex === "number" ? t.nativeIndex : null),
         ytId: t.ytId || null,
         save: { instrumental: saveInst, vocals: saveVox },
-        model: chosenModel()
+        model: chosenModel(), swap: isSwap(chosenModel())
       };
       setRunning(true); setProgress(0, "decode"); startTimer();
       try { bridge().separate(JSON.stringify(opts)); }

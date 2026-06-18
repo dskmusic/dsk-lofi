@@ -2091,13 +2091,13 @@
     .stm-mrow__l1 { display: flex; align-items: center; gap: 8px; }
     .stm-mrow__l2 { display: flex; align-items: center; gap: 10px; padding-left: 26px; }
     .stm-mrow__l2 .stm-mrow__desc { flex: 1; min-width: 0; }
-    .stm-time-in {
-      width: 64px; flex-shrink: 0; text-align: center; padding: 5px 6px;
-      font: inherit; font-size: 13px; font-variant-numeric: tabular-nums;
-      background: var(--color-surface); color: var(--color-text);
-      border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    .stm-time-val {
+      width: 52px; flex-shrink: 0; text-align: right;
+      font-size: 13px; font-weight: var(--fw-semi); font-variant-numeric: tabular-nums;
+      color: var(--neon-cyan);
     }
-    .stm-time-in::placeholder { color: var(--color-text-faint); }
+    .stm-swap { background: none; border: none; cursor: pointer; font-size: 15px; line-height: 1; color: var(--color-text-faint); padding: 0 2px; }
+    .stm-swap--on { color: var(--neon-amber); }
     .stm-mrow:hover { background: var(--color-surface-raised); }
     .stm-mrow--sel { border-color: var(--acc); background: rgba(0,255,65,.07); }
     .stm-mrow__meta { flex: 1; min-width: 0; }
@@ -2138,3 +2138,13 @@
     /* botones de reordenar carpetas raíz */
     .lib-row__move { background: none; border: none; cursor: pointer; color: var(--neon-cyan); font-size: 12px; line-height: 1; padding: 4px 5px; flex-shrink: 0; }
     .lib-row__move:disabled { opacity: .25; cursor: default; }
+
+    /* añadir carpetas comunes por ruta (explorador) */
+    .lib-quickadd { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 4px 10px; }
+    .lib-quickadd__chip {
+      font-size: 12px; font-weight: var(--fw-semi); padding: 6px 10px;
+      border-radius: var(--radius-pill); cursor: pointer;
+      background: var(--color-surface-raised); color: var(--neon-cyan);
+      border: 1px solid var(--color-border);
+    }
+    .lib-quickadd__chip:active { background: var(--color-surface); }
