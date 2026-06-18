@@ -2,6 +2,9 @@
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
+set /a LIMIT=104857600
+set /a WARN=52428800
+
 echo ============================================
 echo   DSK LoFi - Sincronizar con GitHub
 echo ============================================
@@ -16,6 +19,49 @@ if not "%size%"=="0" (
     echo Archivos modificados:
     git status --short
     echo.
+
+    echo [1b/5] Comprobando archivos grandes ^(limite GitHub 100 MB^)...
+    set "BIGFILE="
+    del "%TEMP%\dsklofi_files.txt" 2>nul
+    git ls-files -o --exclude-standard      >> "%TEMP%\dsklofi_files.txt"
+    git diff --name-only                    >> "%TEMP%\dsklofi_files.txt"
+    git diff --name-only --cached           >> "%TEMP%\dsklofi_files.txt"
+
+    for /f "usebackq eol=| delims=" %%F in ("%TEMP%\dsklofi_files.txt") do (
+        set "p=%%F"
+        set "p=!p:/=\!"
+        set "fsize="
+        for %%A in ("!p!") do set "fsize=%%~zA"
+        if not "!fsize!"=="" (
+            set /a mb=!fsize!/1048576
+            if !fsize! GTR %LIMIT% (
+                echo   [BLOQUEA] !mb! MB  ^>  %%F
+                set "BIGFILE=1"
+            ) else if !fsize! GTR %WARN% (
+                echo   [aviso]   !mb! MB     %%F   ^(grande, pero permitido^)
+            )
+        )
+    )
+    del "%TEMP%\dsklofi_files.txt" 2>nul
+
+    if defined BIGFILE (
+        echo.
+        echo ============================================
+        echo   ABORTADO: hay archivos de mas de 100 MB.
+        echo   GitHub los rechazara ^(y quedarian en el historial^).
+        echo   NO se ha hecho commit ni push.
+        echo.
+        echo   Soluciones:
+        echo     - Mueve el archivo fuera del repositorio, o
+        echo     - Anhadelo a .gitignore  ^(p.ej.  *.rar^), o
+        echo     - Usa Git LFS  https://git-lfs.github.com
+        echo   Luego vuelve a ejecutar este script.
+        echo ============================================
+        goto :fin
+    )
+    echo   OK: ningun archivo supera el limite.
+    echo.
+
     echo [2/5] Anadiendo y creando commit...
     git add -A
 
