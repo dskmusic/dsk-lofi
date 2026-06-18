@@ -603,11 +603,44 @@
 
   function explorerSearchActive() { return expSearchQuery.trim().length > 0; }
 
+  function expProgShow() {
+    const w = $("#libExpSearchProg"); if (!w) return;
+    w.hidden = false; w.setAttribute("aria-hidden", "false");
+    w.classList.remove("is-done"); w.classList.add("is-on");
+  }
+  function expProgUpdate(found, scanned, queueLen) {
+    const bar = $("#libExpSearchProgBar"), cnt = $("#libExpSearchProgCount");
+    if (bar) {
+      const total = scanned + queueLen;
+      const pct = total > 0 ? Math.round((scanned / total) * 100) : 0;
+      bar.style.width = pct + "%";
+    }
+    if (cnt) cnt.textContent = String(found);
+  }
+  function expProgDone(found) {
+    const w = $("#libExpSearchProg"), cnt = $("#libExpSearchProgCount");
+    if (!w) return;
+    w.classList.add("is-done");
+    if (cnt) cnt.textContent = String(found);
+    setTimeout(() => {
+      if (w.classList.contains("is-done")) {
+        w.classList.remove("is-on", "is-done");
+        w.hidden = true; w.setAttribute("aria-hidden", "true");
+      }
+    }, 900);
+  }
+  function expProgHide() {
+    const w = $("#libExpSearchProg"); if (!w) return;
+    w.classList.remove("is-on", "is-done");
+    w.hidden = true; w.setAttribute("aria-hidden", "true");
+    const bar = $("#libExpSearchProgBar"); if (bar) bar.style.width = "0%";
+  }
+
   function runExplorerSearch(query) {
     expSearchQuery = query;
     const list = $("#libExpItems");
     const q = norm(query.trim());
-    if (!q) { renderExplorer(); return; }
+    if (!q) { expProgHide(); renderExplorer(); return; }
 
     const token = ++expSearchToken;
     $("#libUp").hidden = true;
@@ -617,13 +650,16 @@
 
     let roots = [];
     try { roots = JSON.parse(window.DSKBridge.listRoots() || "[]"); } catch (e) {}
-    if (!roots.length) { list.innerHTML = '<div class="lib-empty">' + T("ex_no_roots") + "</div>"; return; }
+    if (!roots.length) { expProgHide(); list.innerHTML = '<div class="lib-empty">' + T("ex_no_roots") + "</div>"; return; }
 
     // cola BFS de carpetas pendientes: { uri, name }
     const queue = roots.filter((r) => !r.pending).map((r) => ({ uri: r.uri, name: r.name }));
     let found = 0;
+    let scanned = 0;
     const MAX_RESULTS = 200;
     let firstBatch = true;
+    expProgShow();
+    expProgUpdate(0, 0, queue.length);
 
     function step() {
       if (expSearchToken !== token) return;          // cancelado (nueva búsqueda / cambio de vista)
@@ -631,11 +667,13 @@
         if (found === 0) {
           list.innerHTML = '<div class="lib-empty">' + T("ex_search_empty") + "</div>";
         }
+        expProgDone(found);
         return;
       }
       const folder = queue.shift();
       let entries = [];
       try { entries = JSON.parse(window.DSKBridge.browse(folder.uri) || "[]"); } catch (e) {}
+      scanned++;
 
       const frag = document.createDocumentFragment();
       entries.forEach((e) => {
@@ -657,8 +695,12 @@
         firstBatch = false;
         list.appendChild(frag);
       }
+      expProgUpdate(found, scanned, queue.length);
       if (queue.length && found < MAX_RESULTS) requestAnimationFrame(step);
-      else if (found === 0) list.innerHTML = '<div class="lib-empty">' + T("ex_search_empty") + "</div>";
+      else {
+        if (found === 0) list.innerHTML = '<div class="lib-empty">' + T("ex_search_empty") + "</div>";
+        expProgDone(found);
+      }
     }
     step();
   }
@@ -700,6 +742,7 @@
   function clearExplorerSearch() {
     expSearchQuery = "";
     expSearchToken++;
+    expProgHide();
     const inp = $("#libExpSearch"); if (inp) inp.value = "";
     const clr = $("#libExpSearchClear"); if (clr) clr.hidden = true;
   }

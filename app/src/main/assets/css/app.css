@@ -1731,6 +1731,28 @@
     }
     .plfs__search .plsearch__input { width: 100%; height: 38px; padding: 6px 30px 6px 12px; font-size: var(--fs-base, 15px); }
     .plfs__search .plsearch__clear { right: calc(var(--space-4) + 6px); }
+    .exp-search-prog {
+      display: flex; align-items: center; gap: var(--space-2);
+      padding: 0 var(--space-4) var(--space-2);
+      opacity: 0; max-height: 0; overflow: hidden;
+      transition: opacity .18s ease, max-height .18s ease;
+    }
+    .exp-search-prog.is-on { opacity: 1; max-height: 24px; }
+    .exp-search-prog__track {
+      flex: 1; height: 3px; border-radius: var(--radius-pill);
+      background: var(--color-border); overflow: hidden;
+    }
+    .exp-search-prog__track > i {
+      display: block; height: 100%; width: 0%;
+      background: var(--acc); border-radius: var(--radius-pill);
+      transition: width .15s linear;
+    }
+    .exp-search-prog.is-done .exp-search-prog__track > i { width: 100% !important; }
+    .exp-search-prog__count {
+      flex: 0 0 auto; font-size: 11px; line-height: 1;
+      color: var(--color-text-muted); font-variant-numeric: tabular-nums;
+      min-width: 2ch; text-align: right;
+    }
     .plfs__items {
       flex: 1; overflow-y: auto;
       padding: var(--space-2) var(--space-3) calc(var(--space-4) + env(safe-area-inset-bottom));
