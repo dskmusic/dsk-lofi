@@ -145,8 +145,8 @@ class StemSeparator(
             // "directo" = salida del modelo; "residual" = mezcla − salida.
             // Sin swap: instrumental=directo, voz=residual. Con swap: al revés
             // (para modelos que dan las pistas invertidas).
-            val instFileT = File(outDir, "$baseNm (instrumental).wav")
-            val voxFileT = File(outDir, "$baseNm (voz).wav")
+            val instFileT = File(outDir, "$baseNm (voz).wav")
+            val voxFileT = File(outDir, "$baseNm (instrumental).wav")
             val residual = {
                 val vL = FloatArray(n); val vR = FloatArray(n)
                 for (s in 0 until n) { vL[s] = mpL[trim + s] - instL[s]; vR[s] = mpR[trim + s] - instR[s] }
