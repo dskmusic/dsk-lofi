@@ -40,12 +40,12 @@ class DownloadService : Service() {
         const val CH = "dsk_downloads"
         const val NID = 0xD5C0
 
-        private val queue = ConcurrentLinkedQueue<Array<String>>()  // [videoId, title, thumb]
+        private val queue = ConcurrentLinkedQueue<Array<String>>()  // [videoId, title, thumb, playlistName]
         private val total = AtomicInteger(0)
         private val done = AtomicInteger(0)
 
-        fun enqueue(ctx: Context, videoId: String, title: String, thumb: String) {
-            queue.add(arrayOf(videoId, title, thumb)); total.incrementAndGet()
+        fun enqueue(ctx: Context, videoId: String, title: String, thumb: String, playlistName: String = "") {
+            queue.add(arrayOf(videoId, title, thumb, playlistName)); total.incrementAndGet()
             val i = Intent(ctx, DownloadService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(i)
             else ctx.startService(i)
@@ -77,7 +77,7 @@ class DownloadService : Service() {
             try {
                 while (true) {
                     val job = queue.poll() ?: break
-                    try { processJob(job[0], job[1], if (job.size > 2) job[2] else "") } catch (e: Throwable) { jsErr(job[0], "fallo") }
+                    try { processJob(job[0], job[1], if (job.size > 2) job[2] else "", if (job.size > 3) job[3] else "") } catch (e: Throwable) { jsErr(job[0], "fallo") }
                     done.incrementAndGet()
                 }
             } finally {
@@ -90,7 +90,7 @@ class DownloadService : Service() {
 
     private fun pos(): Int = (done.get() + 1).coerceAtMost(total.get().coerceAtLeast(1))
 
-    private fun processJob(videoId: String, titleHint: String, thumbUrl: String) {
+    private fun processJob(videoId: String, titleHint: String, thumbUrl: String, playlistName: String) {
         val tmp = File(cacheDir, "yt_" + System.nanoTime() + ".dat")
         val tmpM4a = File(cacheDir, "yt_" + System.nanoTime() + ".m4a")
         try {
@@ -134,7 +134,7 @@ class DownloadService : Service() {
             // 3) guardar como .mp3 (compatible con casi todos los reproductores)
             notify("Guardando " + pos() + "/" + total.get(), 96, false)
             val outName = "$title.mp3"
-            val saved = DskStorage.saveFromStream(applicationContext, outName, "audio/mpeg", FileInputStream(taggable))
+            val saved = DskStorage.saveFromStream(applicationContext, outName, "audio/mpeg", FileInputStream(taggable), DskStorage.downloadsDir(playlistName))
             if (saved == null) { jsErr(videoId, "no se pudo guardar"); notify("Error al guardar", 0, false); return }
 
             jsProg(videoId, 100)

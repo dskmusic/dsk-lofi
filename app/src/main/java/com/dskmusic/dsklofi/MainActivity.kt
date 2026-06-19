@@ -1001,8 +1001,8 @@ class MainActivity : Activity() {
     // transcodificación). El servicio sobrevive a segundo plano y al cierre.
     inner class DownloadsBridge {
         @JavascriptInterface
-        fun enqueue(videoId: String, title: String, thumb: String) {
-            DownloadService.enqueue(this@MainActivity, videoId, title, thumb)
+        fun enqueue(videoId: String, title: String, thumb: String, playlistName: String) {
+            DownloadService.enqueue(this@MainActivity, videoId, title, thumb, playlistName)
         }
     }
 

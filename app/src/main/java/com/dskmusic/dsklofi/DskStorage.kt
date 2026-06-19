@@ -18,6 +18,9 @@ import java.io.OutputStream
  *
  * (audio descargado, PDFs de letras y audio procesado con efectos).
  *
+ * Las descargas de audio de YouTube van en /DSKlofi/Downloads, y si la pista
+ * pertenece a una lista (local o de YouTube), en /DSKlofi/Downloads/<lista>.
+ *
  * IMPORTANTE: escribir en la raíz NO es posible con scoped storage. Requiere:
  *   - Android 11+ (API 30+): permiso "Acceso a todos los archivos"
  *       (MANAGE_EXTERNAL_STORAGE) → Environment.isExternalStorageManager().
@@ -37,15 +40,25 @@ object DskStorage {
         return dir
     }
 
-    fun saveBytes(ctx: Context, name: String, mime: String, bytes: ByteArray): String? =
-        saveStream(ctx, name, mime) { out -> out.write(bytes) }
+    /** /DSKlofi/Downloads (y opcionalmente /DSKlofi/Downloads/<playlist>). La crea si no existe. */
+    fun downloadsDir(playlistName: String? = null): File {
+        var d = File(dir(), "Downloads")
+        if (!playlistName.isNullOrBlank()) {
+            d = File(d, sanitize(playlistName).take(120).ifBlank { "playlist" })
+        }
+        if (!d.exists()) d.mkdirs()
+        return d
+    }
 
-    fun saveFromStream(ctx: Context, name: String, mime: String, input: InputStream): String? =
-        saveStream(ctx, name, mime) { out -> input.copyTo(out, 64 * 1024) }
+    fun saveBytes(ctx: Context, name: String, mime: String, bytes: ByteArray, dest: File = dir()): String? =
+        saveStream(ctx, name, mime, dest) { out -> out.write(bytes) }
 
-    private fun saveStream(ctx: Context, name: String, mime: String, writer: (OutputStream) -> Unit): String? {
+    fun saveFromStream(ctx: Context, name: String, mime: String, input: InputStream, dest: File = dir()): String? =
+        saveStream(ctx, name, mime, dest) { out -> input.copyTo(out, 64 * 1024) }
+
+    private fun saveStream(ctx: Context, name: String, mime: String, dest: File, writer: (OutputStream) -> Unit): String? {
         return try {
-            val file = File(dir(), name)
+            val file = File(dest, name)
             FileOutputStream(file).use { writer(it) }
             // que aparezca en reproductores / gestores de archivos
             try {

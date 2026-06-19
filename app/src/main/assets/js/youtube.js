@@ -130,6 +130,7 @@
   let plView = null; // { title, results, returnQuery, returnType } | null
 
   function rowKey(r) { return r.type === "playlist" ? r.playlistId : r.videoId; }
+  function currentPlaylistName() { return plView ? (plView.title || "") : ""; }
 
   function showPlView(show) {
     const v = $("#ytPlView"), bar = $("#ytTypeBar"), search = $(".yt-bar");
@@ -271,7 +272,7 @@
     const rs = selectedResults(); if (!rs.length) return;
     if (!(window.DSKDownloads && DSKDownloads.enqueue)) { if (window.UI) UI.toast(t("on_browser")); return; }
     let n = 0;
-    rs.forEach((r) => { try { DSKDownloads.enqueue(r.videoId, r.title || "", r.thumb || ""); setBar(r.videoId, 2, false); n++; } catch (e) {} });
+    rs.forEach((r) => { try { DSKDownloads.enqueue(r.videoId, r.title || "", r.thumb || "", currentPlaylistName()); setBar(r.videoId, 2, false); n++; } catch (e) {} });
     if (window.UI) UI.toast(t("on_dl_all_started").replace("{n}", n));
     exitSelect();
   }
@@ -421,7 +422,7 @@
   function enqueueDownload(i) {
     const r = results[i]; if (!r || r.type === "playlist") return;
     if (!(window.DSKDownloads && DSKDownloads.enqueue)) { if (window.UI) UI.toast(t("on_browser")); return; }
-    try { DSKDownloads.enqueue(r.videoId, r.title || "", r.thumb || ""); }
+    try { DSKDownloads.enqueue(r.videoId, r.title || "", r.thumb || "", currentPlaylistName()); }
     catch (e) { if (window.UI) UI.toast(t("on_dl_error")); return; }
     setBar(r.videoId, 2, false);
     if (window.UI) UI.toast(t("on_queued"));
@@ -432,9 +433,10 @@
     if (!results.length) return;
     if (!(window.DSKDownloads && DSKDownloads.enqueue)) { if (window.UI) UI.toast(t("on_browser")); return; }
     let n = 0;
+    const plName = currentPlaylistName();
     results.forEach((r) => {
       if (!r || r.type === "playlist" || !r.videoId) return;
-      try { DSKDownloads.enqueue(r.videoId, r.title || "", r.thumb || ""); setBar(r.videoId, 2, false); n++; }
+      try { DSKDownloads.enqueue(r.videoId, r.title || "", r.thumb || "", plName); setBar(r.videoId, 2, false); n++; }
       catch (e) {}
     });
     if (window.UI) UI.toast(t("on_dl_all_started").replace("{n}", n));

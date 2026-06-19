@@ -364,7 +364,8 @@
     // descargar: solo para pistas de YouTube (en streaming, sin archivo local)
     if (mi && mi.ytId && !mi.uri && window.DSKDownloads && DSKDownloads.enqueue) {
       add("m_download", () => {
-        try { DSKDownloads.enqueue(mi.ytId, mi.name || "", mi.thumb || ""); UI.toast(T("on_queued")); }
+        const plName = (ctx.kind === "list" && ctx.listId) ? (((findList(ctx.listId) || {}).name) || "") : "";
+        try { DSKDownloads.enqueue(mi.ytId, mi.name || "", mi.thumb || "", plName); UI.toast(T("on_queued")); }
         catch (e) { UI.toast(T("on_dl_error")); }
       });
     }
