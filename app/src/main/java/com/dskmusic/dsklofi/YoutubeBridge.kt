@@ -76,15 +76,17 @@ class YoutubeBridge(private val ctx: Context) {
     @JavascriptInterface
     fun libVersion(): String = BuildConfig.NEWPIPE_VERSION
 
+    /** filter: "videos" | "playlists" | "both" (vacío o "videos" = solo vídeos, compat con llamadas antiguas) */
     @JavascriptInterface
-    fun search(query: String, reqId: String) {
+    fun search(query: String, reqId: String, filter: String) {
         pool.execute {
             try {
-                val handler = yt.searchQHFactory.fromQuery(
-                    query,
-                    listOf(YoutubeSearchQueryHandlerFactory.VIDEOS),
-                    ""
-                )
+                val wantVideos = filter != "playlists"
+                val wantPlaylists = filter == "playlists" || filter == "both"
+                val filters = ArrayList<String>()
+                if (wantVideos) filters.add(YoutubeSearchQueryHandlerFactory.VIDEOS)
+                if (wantPlaylists) filters.add(YoutubeSearchQueryHandlerFactory.PLAYLISTS)
+                val handler = yt.searchQHFactory.fromQuery(query, filters, "")
                 val extractor = yt.getSearchExtractor(handler)
                 extractor.fetchPage()
 
@@ -97,18 +99,39 @@ class YoutubeBridge(private val ctx: Context) {
                     val cur = page ?: break
                     for (item in cur.items) {
                         if (out.length() >= target) break
-                        if (item.infoType != InfoItem.InfoType.STREAM) continue
-                        val s = item as? StreamInfoItem ?: continue
-                        val vurl = s.url ?: continue
-                        val vid = try { yt.streamLHFactory.getId(vurl) } catch (e: Exception) { "" }
-                        if (vid.isNullOrBlank() || !seen.add(vid)) continue
-                        out.put(JSONObject().apply {
-                            put("videoId", vid)
-                            put("title", s.name ?: "")
-                            put("uploader", s.uploaderName ?: "")
-                            put("duration", s.duration)
-                            put("thumb", bestThumb(s))
-                        })
+                        when (item.infoType) {
+                            InfoItem.InfoType.STREAM -> {
+                                if (!wantVideos) continue
+                                val s = item as? StreamInfoItem ?: continue
+                                val vurl = s.url ?: continue
+                                val vid = try { yt.streamLHFactory.getId(vurl) } catch (e: Exception) { "" }
+                                if (vid.isNullOrBlank() || !seen.add("v_$vid")) continue
+                                out.put(JSONObject().apply {
+                                    put("type", "video")
+                                    put("videoId", vid)
+                                    put("title", s.name ?: "")
+                                    put("uploader", s.uploaderName ?: "")
+                                    put("duration", s.duration)
+                                    put("thumb", bestThumb(s))
+                                })
+                            }
+                            InfoItem.InfoType.PLAYLIST -> {
+                                if (!wantPlaylists) continue
+                                val p = item as? org.schabi.newpipe.extractor.playlist.PlaylistInfoItem ?: continue
+                                val purl = p.url ?: continue
+                                val plid = try { yt.playlistLHFactory.getId(purl) } catch (e: Exception) { "" }
+                                if (plid.isNullOrBlank() || !seen.add("p_$plid")) continue
+                                out.put(JSONObject().apply {
+                                    put("type", "playlist")
+                                    put("playlistId", plid)
+                                    put("title", p.name ?: "")
+                                    put("uploader", p.uploaderName ?: "")
+                                    put("itemCount", p.streamCount)
+                                    put("thumb", try { p.thumbnails?.lastOrNull()?.url ?: "" } catch (e: Exception) { "" })
+                                })
+                            }
+                            else -> {}
+                        }
                     }
                     if (out.length() >= target) break
                     val np = cur.nextPage ?: break
@@ -147,6 +170,7 @@ class YoutubeBridge(private val ctx: Context) {
                         val vid = try { yt.streamLHFactory.getId(vurl) } catch (e: Exception) { "" }
                         if (vid.isNullOrBlank() || !seen.add(vid)) continue
                         out.put(JSONObject().apply {
+                            put("type", "video")
                             put("videoId", vid)
                             put("title", s.name ?: "")
                             put("uploader", s.uploaderName ?: "")

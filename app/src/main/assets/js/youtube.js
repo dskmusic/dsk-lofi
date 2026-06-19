@@ -41,7 +41,7 @@
     callbacksReady = true;
   }
 
-  function call(method, arg) {
+  function call(method, arg, arg2) {
     return new Promise((resolve, reject) => {
       installCallbacks();
       if (!native()) { reject("browser"); return; }
@@ -51,13 +51,16 @@
         resolve: (v) => { clearTimeout(to); resolve(v); },
         reject:  (e) => { clearTimeout(to); reject(e); }
       };
-      try { window.DSKYoutube[method](arg, reqId); }
+      try {
+        if (arg2 !== undefined) window.DSKYoutube[method](arg, reqId, arg2);
+        else window.DSKYoutube[method](arg, reqId);
+      }
       catch (e) { clearTimeout(to); delete pending[reqId]; reject("network"); }
     });
   }
 
   const DSKYT = {
-    search(query) { return call("search", query); },
+    search(query, filter) { return call("search", query, filter || curType); },
     resolve(videoId) { return call("resolveAudio", videoId).then((a) => (a && a[0]) || null); },
     resolvePlaylist(urlOrId) { return call("resolvePlaylist", urlOrId); },
     download(videoId) { return call("downloadAudio", videoId).then((a) => (a && a[0]) || null); }
@@ -117,26 +120,103 @@
   const IC_DL = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 11 5 5 5-5"></path><path d="M5 21h14"></path></svg>';
   const IC_ADD = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>';
   const IC_CHECK = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  const IC_PLAY = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>';
 
   let results = [];
-  const sel = { on: false, ids: new Set() };   // selección múltiple (por videoId)
+  let curType = "videos";               // "videos" | "playlists" | "both"
+  const sel = { on: false, ids: new Set() };   // selección múltiple (por videoId o playlistId)
+
+  // ---- navegación a una lista (vista anidada dentro de la pestaña Online) ----
+  let plView = null; // { title, results, returnQuery, returnType } | null
+
+  function rowKey(r) { return r.type === "playlist" ? r.playlistId : r.videoId; }
+
+  function showPlView(show) {
+    const v = $("#ytPlView"), bar = $("#ytTypeBar"), search = $(".yt-bar");
+    if (v) v.hidden = !show;
+    if (bar) bar.hidden = show;
+    if (search) search.hidden = show;
+  }
+
+  async function enterPlaylist(r) {
+    plView = { title: r.title || "", returnResults: results, returnType: curType, returnSearchVal: ($("#ytSearch") ? $("#ytSearch").value : "") };
+    showPlView(true);
+    const t1 = $("#ytPlTitle"); if (t1) t1.textContent = r.title || "";
+    pushBackHandler();
+    state(t("on_playlist_loading"));
+    try {
+      const arr = await DSKYT.resolvePlaylist(r.playlistId);
+      if (!arr || !arr.length) { results = []; state(t("on_notfound")); return; }
+      results = arr.map((it) => ({
+        type: "video", videoId: it.videoId, title: it.title || it.videoId,
+        uploader: it.uploader || "", duration: it.duration || 0,
+        thumb: it.thumb || ("https://i.ytimg.com/vi/" + it.videoId + "/hqdefault.jpg")
+      }));
+      render();
+    } catch (code) {
+      results = [];
+      if (code === "browser") state(t("on_browser"));
+      else state(t("on_error"));
+    }
+  }
+
+  function exitPlaylist() {
+    if (!plView) return false;
+    const back = plView;
+    plView = null;
+    popBackHandler();
+    showPlView(false);
+    results = back.returnResults || [];
+    curType = back.returnType || curType;
+    syncTypeChips();
+    render();
+    return true;
+  }
+
+  // registro en la pila de "atrás" compartida de la app (botón físico)
+  let backHandlerInstalled = false;
+  function pushBackHandler() {
+    if (backHandlerInstalled) return;
+    window.__dskBackStack = window.__dskBackStack || [];
+    window.__dskBackStack.push(ytBackHandler);
+    backHandlerInstalled = true;
+  }
+  function popBackHandler() {
+    if (!backHandlerInstalled) return;
+    const st = window.__dskBackStack;
+    if (st) { const i = st.indexOf(ytBackHandler); if (i >= 0) st.splice(i, 1); }
+    backHandlerInstalled = false;
+  }
+  function ytBackHandler() { return exitPlaylist(); }
+
+  function syncTypeChips() {
+    const map = { videos: "ytTypeVideos", playlists: "ytTypePlaylists", both: "ytTypeBoth" };
+    Object.keys(map).forEach((k) => { const b = $("#" + map[k]); if (b) b.classList.toggle("is-active", k === curType); });
+  }
 
   function render() {
     if (!results.length) { sel.on = false; sel.ids.clear(); state(t("on_notfound")); return; }
     const selecting = sel.on;
     let h = "";
     results.forEach((r, i) => {
-      const sub = [r.uploader, fmtDur(r.duration)].filter(Boolean).join(" · ");
-      const checked = selecting && sel.ids.has(r.videoId);
-      h += '<div class="yt-row' + (checked ? " yt-row--checked" : "") + '" data-i="' + i + '" data-vid="' + esc(r.videoId) + '">' +
+      const isPl = r.type === "playlist";
+      const sub = isPl
+        ? [r.uploader, (r.itemCount > 0 ? r.itemCount + " " + t("on_type_videos").toLowerCase() : "")].filter(Boolean).join(" · ")
+        : [r.uploader, fmtDur(r.duration)].filter(Boolean).join(" · ");
+      const key = rowKey(r);
+      const checked = selecting && sel.ids.has(key);
+      h += '<div class="yt-row' + (isPl ? " yt-row--playlist" : "") + (checked ? " yt-row--checked" : "") + '" data-i="' + i + '" data-vid="' + esc(key) + '">' +
            (r.thumb ? '<img class="yt-row__thumb" src="' + esc(r.thumb) + '" alt="" loading="lazy">' : '<span class="yt-row__thumb"></span>') +
+           (isPl && r.itemCount > 0 ? '<span class="yt-row__plcount">' + esc(r.itemCount) + '</span>' : "") +
            '<span class="yt-row__main">' +
            '<span class="yt-row__title">' + esc(r.title) + "</span>" +
            '<span class="yt-row__sub">' + esc(sub) + "</span></span>" +
            (selecting
              ? '<span class="yt-row__chk">' + IC_CHECK + "</span>"
-             : '<button class="yt-row__act" type="button" data-dl="' + i + '" aria-label="' + esc(t("on_download")) + '">' + IC_DL + "</button>" +
-               '<button class="yt-row__act" type="button" data-add="' + i + '" aria-label="' + esc(t("on_add_list")) + '">' + IC_ADD + "</button>") +
+             : (isPl
+                 ? '<button class="yt-row__playbtn" type="button" data-plplay="' + i + '" aria-label="' + esc(t("m_play")) + '">' + IC_PLAY + "</button>"
+                 : '<button class="yt-row__act" type="button" data-dl="' + i + '" aria-label="' + esc(t("on_download")) + '">' + IC_DL + "</button>" +
+                   '<button class="yt-row__act" type="button" data-add="' + i + '" aria-label="' + esc(t("on_add_list")) + '">' + IC_ADD + "</button>")) +
            '<div class="yt-row__bar"><span class="yt-row__barfill"></span></div>' +
            "</div>";
     });
@@ -175,7 +255,7 @@
     if (row) row.classList.toggle("yt-row--checked", sel.ids.has(vid));
     updateFoot();
   }
-  function selectedResults() { return results.filter((r) => sel.ids.has(r.videoId)); }
+  function selectedResults() { return results.filter((r) => r.type !== "playlist" && sel.ids.has(rowKey(r))); }
   function playSelected() {
     const rs = selectedResults(); if (!rs.length || !window.DSKQueue) return;
     DSKQueue.load(rs.map(itemOf), 0, { type: "online", name: "YouTube" });
@@ -201,13 +281,28 @@
   }
 
   function play(i) {
-    const r = results[i]; if (!r || !window.DSKQueue) return;
-    const items = results.map(itemOf);
-    DSKQueue.load(items, i, { type: "online", name: "YouTube" });
+    const r = results[i]; if (!r) return;
+    if (r.type === "playlist") { enterPlaylist(r); return; }
+    if (!window.DSKQueue) return;
+    const items = results.filter((x) => x.type !== "playlist").map(itemOf);
+    const idx = results.slice(0, i).filter((x) => x.type !== "playlist").length;
+    DSKQueue.load(items, idx, { type: "online", name: "YouTube" });
   }
   function addToList(i) {
-    const r = results[i]; if (!r) return;
+    const r = results[i]; if (!r || r.type === "playlist") return;
     openTrackMenu(r);
+  }
+
+  // reproduce una lista de resultados completa, resolviendo su contenido primero
+  async function playPlaylistFull(r) {
+    state(t("on_playlist_loading"));
+    try {
+      const arr = await DSKYT.resolvePlaylist(r.playlistId);
+      if (!arr || !arr.length || !window.DSKQueue) { render(); return; }
+      const items = arr.map((it) => itemOf({ title: it.title, videoId: it.videoId, uploader: it.uploader, thumb: it.thumb }));
+      DSKQueue.load(items, 0, { type: "online", name: r.title || "YouTube" });
+      render();
+    } catch (e) { render(); }
   }
 
   /* ---- menú de opciones (+): siguiente / cola / añadir a lista ---- */
@@ -324,7 +419,7 @@
     DSKDownloads.__err = function (vid, msg) { clearBar(vid); if (window.UI) UI.toast(t("on_dl_error") + (msg ? " — " + msg : "")); };
   }
   function enqueueDownload(i) {
-    const r = results[i]; if (!r) return;
+    const r = results[i]; if (!r || r.type === "playlist") return;
     if (!(window.DSKDownloads && DSKDownloads.enqueue)) { if (window.UI) UI.toast(t("on_browser")); return; }
     try { DSKDownloads.enqueue(r.videoId, r.title || "", r.thumb || ""); }
     catch (e) { if (window.UI) UI.toast(t("on_dl_error")); return; }
@@ -338,7 +433,7 @@
     if (!(window.DSKDownloads && DSKDownloads.enqueue)) { if (window.UI) UI.toast(t("on_browser")); return; }
     let n = 0;
     results.forEach((r) => {
-      if (!r || !r.videoId) return;
+      if (!r || r.type === "playlist" || !r.videoId) return;
       try { DSKDownloads.enqueue(r.videoId, r.title || "", r.thumb || ""); setBar(r.videoId, 2, false); n++; }
       catch (e) {}
     });
@@ -348,7 +443,9 @@
   // Añadir todos los resultados a una lista (abre el selector de lista de la app).
   function addAll() {
     if (!results.length) return;
-    if (window.DSKLists && DSKLists.add) DSKLists.add(results.map(itemOf));
+    const rs = results.filter((r) => r.type !== "playlist");
+    if (!rs.length) return;
+    if (window.DSKLists && DSKLists.add) DSKLists.add(rs.map(itemOf));
     else if (window.UI) UI.toast(t("on_browser"));
   }
 
@@ -410,6 +507,7 @@
       const info = await DSKYT.resolve(videoId);
       if (!info) { results = []; state(t("on_notfound")); return; }
       results = [{
+        type: "video",
         videoId: videoId,
         title: info.title || videoId,
         uploader: info.uploader || "",
@@ -427,6 +525,7 @@
   async function run(query) {
     query = (query || "").trim();
     if (!query) return;
+    if (plView) { popBackHandler(); plView = null; showPlView(false); }
     sel.on = false; sel.ids.clear();   // nueva búsqueda → salir de selección
     // ¿es una URL de YouTube? → abrir ese vídeo como resultado único
     const vid = parseYouTubeId(query);
@@ -436,7 +535,7 @@
     if (vid) { openByUrl(vid); return; }
     state(t("on_searching"));
     try {
-      results = await DSKYT.search(query);
+      results = await DSKYT.search(query, curType);
       render();
     } catch (code) {
       results = [];
@@ -454,12 +553,13 @@
       if (e.key === "Enter") { e.preventDefault(); inp.blur(); run(inp.value); }
     });
 
-    // pulsación larga sobre una fila → activa selección múltiple
+    // pulsación larga sobre una fila → activa selección múltiple (solo vídeos)
     let lpTimer = 0, lpVid = "", lpFired = false, lpX = 0, lpY = 0;
     const clearLp = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = 0; } };
     if (items) {
       items.addEventListener("pointerdown", (e) => {
         const row = e.target.closest(".yt-row"); if (!row) return;
+        if (row.classList.contains("yt-row--playlist")) return;
         lpFired = false; lpVid = row.getAttribute("data-vid"); lpX = e.clientX; lpY = e.clientY;
         clearLp();
         lpTimer = setTimeout(() => {
@@ -481,9 +581,11 @@
         if (lpFired) { lpFired = false; e.preventDefault(); e.stopPropagation(); return; }
         if (sel.on) {
           const row = e.target.closest(".yt-row");
-          if (row) toggleSel(row.getAttribute("data-vid"));
+          if (row && !row.classList.contains("yt-row--playlist")) toggleSel(row.getAttribute("data-vid"));
           return;
         }
+        const plplay = e.target.closest("[data-plplay]");
+        if (plplay) { e.stopPropagation(); const r = results[parseInt(plplay.getAttribute("data-plplay"), 10)]; if (r) playPlaylistFull(r); return; }
         const dl = e.target.closest("[data-dl]");
         if (dl) { e.stopPropagation(); enqueueDownload(parseInt(dl.getAttribute("data-dl"), 10)); return; }
         const add = e.target.closest("[data-add]");
@@ -492,6 +594,19 @@
         if (row) play(parseInt(row.getAttribute("data-i"), 10));
       });
     }
+
+    // chips de tipo (vídeos / listas / ambos)
+    const typeBar = $("#ytTypeBar");
+    if (typeBar) typeBar.addEventListener("click", (e) => {
+      const b = e.target.closest(".yt-type-chip"); if (!b) return;
+      const ty = b.getAttribute("data-type"); if (!ty || ty === curType) return;
+      curType = ty; syncTypeChips();
+      if (inp && inp.value.trim()) run(inp.value);
+    });
+
+    // volver desde una lista abierta
+    const plBack = $("#ytPlBack");
+    if (plBack) plBack.addEventListener("click", exitPlaylist);
 
     // barra inferior fija
     const bind = (id, fn) => { const b = $("#" + id); if (b) b.addEventListener("click", fn); };

@@ -716,6 +716,15 @@
       <input class="field yt-search__input" id="ytSearch" type="text" inputmode="search" enterkeyhint="search" autocomplete="off" spellcheck="false" data-i18n-ph="on_search_ph" aria-label="Search YouTube">
       <button class="lib-add yt-go" id="ytGo" type="button" data-i18n="on_search"></button>
     </div>
+    <div class="yt-typebar" id="ytTypeBar">
+      <button class="yt-type-chip is-active" id="ytTypeVideos" type="button" data-type="videos" data-i18n="on_type_videos"></button>
+      <button class="yt-type-chip" id="ytTypePlaylists" type="button" data-type="playlists" data-i18n="on_type_playlists"></button>
+      <button class="yt-type-chip" id="ytTypeBoth" type="button" data-type="both" data-i18n="on_type_both"></button>
+    </div>
+    <div class="yt-plview" id="ytPlView" hidden="hidden">
+      <button class="lib-up" id="ytPlBack" type="button" data-i18n-aria="ex_up"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></button>
+      <span class="lib-path" id="ytPlTitle"></span>
+    </div>
     <div class="lib-list" id="ytItems"></div>
     <div class="sel-bar yt-foot" id="ytFoot" hidden="hidden">
       <span class="sel-bar__count" id="ytFootCount" hidden="hidden"></span>

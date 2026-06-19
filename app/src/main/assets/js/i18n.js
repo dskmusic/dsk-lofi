@@ -243,6 +243,7 @@
         on_add_list: "Add to list",
         pl_repeat_off: "Repeat: off", pl_repeat_one: "Repeat: current track", pl_repeat_all: "Repeat: all",
         on_select: "Select",         on_add_all: "Add all to list", on_dl_all: "Download all", on_dl_all_started: "{n} downloads queued", on_playlist_loading: "Loading playlist…",
+        on_type_videos: "Videos", on_type_playlists: "Playlists", on_type_both: "Both",
         yt_play_next: "Play next", yt_add_queue: "Add to queue", yt_add_playlist: "Add to playlist",
         yt_added_next: "Added — plays next", yt_added_queue: "Added to queue",
 
@@ -496,6 +497,7 @@
         on_add_list: "Añadir a lista",
         pl_repeat_off: "Repetición: desactivada", pl_repeat_one: "Repetir: pista actual", pl_repeat_all: "Repetir: todo",
         on_select: "Seleccionar",         on_add_all: "Añadir todo a lista", on_dl_all: "Descargar todo", on_dl_all_started: "{n} descargas en cola", on_playlist_loading: "Cargando lista…",
+        on_type_videos: "Vídeos", on_type_playlists: "Listas", on_type_both: "Ambos",
         yt_play_next: "Reproducir a continuación", yt_add_queue: "Añadir a la cola", yt_add_playlist: "Añadir a lista",
         yt_added_next: "Añadida — sonará después", yt_added_queue: "Añadida a la cola",
         on_download: "Descargar audio",
