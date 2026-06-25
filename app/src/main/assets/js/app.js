@@ -2199,6 +2199,7 @@
       if (endOfTrackTimer) {
         // sleep "fin de pista": parar al acabar esta canción
         endOfTrackTimer = false;
+        eotMode = false;
         updateTimerBadge();
         setPlayIcon(false);
         if (_eotFading) { setOutputVolumeFactor(1); _eotFading = false; }
@@ -3038,34 +3039,60 @@
   let timerEnd = 0;        // timestamp (ms) cuando expira
   let timerRAF = null;
   let endOfTrackTimer = false;   // parar al acabar la pista actual
+  let eotMode = false;           // opción "parar tras la canción actual" (combinable con minutos)
   const FADE_SECS = 15;    // fade-out final
 
-  function updateTimerBadge() {
-    const badge = $("#timerBadge");
-    if (endOfTrackTimer) {
-      badge.hidden = false; badge.textContent = "▮";
-      $("#btnTimer").classList.add("is-on");
-    } else if (!timerEnd) {
-      badge.hidden = true;
-      $("#btnTimer").classList.remove("is-on");
+  function reflectEotBtn() {
+    const b = $("#timerEndTrack");
+    if (b) {
+      const on = eotMode || endOfTrackTimer;
+      b.classList.toggle("is-on", on);
+      b.setAttribute("aria-checked", on ? "true" : "false");
     }
   }
 
-  function startEndOfTrack() {
-    cancelTimer(true);
-    endOfTrackTimer = true;
+  function updateTimerBadge() {
+    const badge = $("#timerBadge");
+    if (timerEnd) {
+      badge.hidden = false;                 // el mm:ss lo pinta tickTimer
+      $("#btnTimer").classList.add("is-on");
+    } else if (endOfTrackTimer) {
+      badge.hidden = false; badge.textContent = "▮";
+      $("#btnTimer").classList.add("is-on");
+    } else {
+      badge.hidden = true;
+      $("#btnTimer").classList.remove("is-on");
+    }
+    reflectEotBtn();
+  }
+
+  function toggleEndOfTrack() {
+    eotMode = !eotMode;
+    if (eotMode) {
+      if (!timerEnd) {
+        endOfTrackTimer = true;            // sin minutos → armar ya
+        $("#timerCancel").hidden = false;
+      }
+      UI.toast(I18n.t("tm_endtrack_on"));   // con minutos → se aplica al expirar
+    } else {
+      if (!timerEnd) {
+        endOfTrackTimer = false;
+        $("#timerCancel").hidden = true;
+      }
+    }
     updateTimerBadge();
-    $("#timerCancel").hidden = false;
-    UI.toast(I18n.t("tm_endtrack_on"));
   }
 
   function startTimer(minutes) {
+    const keepEot = eotMode;
     cancelTimer(true);
+    eotMode = keepEot;                     // conservar la opción si estaba marcada
+    endOfTrackTimer = false;               // con minutos NO paramos en la 1ª canción
     timerEnd = Date.now() + minutes * 60000;
-    $("#timerBadge").hidden = false;
     $("#btnTimer").classList.add("is-on");
     $("#timerCancel").hidden = false;
-    UI.toast(I18n.t("tm_on") + " · " + minutes + " min");
+    UI.toast(I18n.t("tm_on") + " · " + minutes + " min" + (eotMode ? " + ▮" : ""));
+    updateTimerBadge();
     tickTimer();
   }
 
@@ -3073,9 +3100,11 @@
     if (timerRAF) { cancelAnimationFrame(timerRAF); timerRAF = null; }
     timerEnd = 0;
     endOfTrackTimer = false;
+    eotMode = false;
     $("#timerBadge").hidden = true;
     $("#btnTimer").classList.remove("is-on");
     $("#timerCancel").hidden = true;
+    reflectEotBtn();
     // restaurar volumen por si quedó a media bajada (timer por minutos o fin de pista)
     if (_eotFading) { setOutputVolumeFactor(1); _eotFading = false; }
     try { Engine.resetFade(); } catch (e) {}   // reset instantáneo (no rampa lenta)
@@ -3092,6 +3121,17 @@
     const left = timerEnd - Date.now();
     const badge = $("#timerBadge");
     if (left <= 0) {
+      if (eotMode) {
+        // tiempo cumplido: NO parar de golpe, esperar a que acabe la canción
+        if (timerRAF) { cancelAnimationFrame(timerRAF); timerRAF = null; }
+        timerEnd = 0;
+        eotMode = false;
+        endOfTrackTimer = true;            // se parará en dsk:ended
+        if (_eotFading) { setOutputVolumeFactor(1); _eotFading = false; }
+        updateTimerBadge();
+        UI.toast(I18n.t("tm_endtrack_on"));
+        return;
+      }
       // fin: pausar y limpiar
       cancelTimer(true);
       (async () => { setPlayIcon(false); await Engine.pause(); })();
@@ -3101,8 +3141,8 @@
     // badge mm:ss
     const s = Math.ceil(left / 1000);
     badge.textContent = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
-    // fade-out suave en los últimos FADE_SECS
-    if (left <= FADE_SECS * 1000 && Engine.playing) {
+    // fade-out suave en los últimos FADE_SECS (no si esperamos al fin de canción)
+    if (!eotMode && left <= FADE_SECS * 1000 && Engine.playing) {
       const k = Math.max(0, left / (FADE_SECS * 1000)); // 1→0
       _eotFading = true;
       setOutputVolumeFactor(k);
@@ -3122,7 +3162,7 @@
       const m = parseInt($("#timerCustom").value, 10);
       if (m > 0) { startTimer(m); UI.closeModal("timerModal"); }
     });
-    $("#timerEndTrack").addEventListener("click", () => { startEndOfTrack(); UI.closeModal("timerModal"); });
+    $("#timerEndTrack").addEventListener("click", () => { toggleEndOfTrack(); });
     $("#timerCancel").addEventListener("click", () => { cancelTimer(); UI.closeModal("timerModal"); });
   }
 
