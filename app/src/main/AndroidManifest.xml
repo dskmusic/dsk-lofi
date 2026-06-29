@@ -80,6 +80,30 @@
                 <data android:mimeType="audio/*" />
             </intent-filter>
 
+            <!-- Abrir un vídeo desde un gestor de archivos ("Abrir con" → solo audio) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+
+            <!-- Compartir un vídeo a la app -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+
+            <!-- Compartir varios vídeos a la app -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+
             <!-- Compartir texto/enlace a la app (p.ej. un enlace de YouTube) -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

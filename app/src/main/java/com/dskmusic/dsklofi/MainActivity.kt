@@ -182,9 +182,10 @@ class MainActivity : Activity() {
         }
     }
 
-    // URIs de audio recibidos por intent (VIEW / SEND / SEND_MULTIPLE), pendientes
+    // URIs de audio/vídeo recibidos por intent (VIEW / SEND / SEND_MULTIPLE), pendientes
     // de entregar al WebView cuando la página esté lista.
     private var pendingAudioUris: List<Uri> = emptyList()
+    private var lastLoadedIsVideo = false
 
     private fun readIncomingAudio(i: android.content.Intent?): Boolean {
         if (i == null) return false
@@ -199,15 +200,20 @@ class MainActivity : Activity() {
                 i.getParcelableArrayListExtra<Uri>(android.content.Intent.EXTRA_STREAM)?.let { uris.addAll(it) }
             }
         }
-        // filtrar solo audio (por tipo o extensión) y descartar .dsk
-        val audioExt = Regex("\\.(mp3|wav|ogg|opus|flac|m4a|aac|webm)$", RegexOption.IGNORE_CASE)
+        // filtrar audio y vídeo (se reproducirá solo el audio) y descartar .dsk
+        val mediaExt = Regex("\\.(mp3|wav|ogg|opus|flac|m4a|aac|webm|mp4|m4v|mkv|mov|avi|3gp|3g2)$", RegexOption.IGNORE_CASE)
+        val videoExt = Regex("\\.(mp4|m4v|mkv|mov|avi|3gp|3g2)$", RegexOption.IGNORE_CASE)
         val filtered = uris.filter { u ->
             val t = contentResolver.getType(u) ?: ""
             val name = queryDisplayName(u)
-            (t.startsWith("audio") || audioExt.containsMatchIn(name)) && !name.endsWith(".dsk", true)
+            (t.startsWith("audio") || t.startsWith("video") || mediaExt.containsMatchIn(name)) && !name.endsWith(".dsk", true)
         }
         if (filtered.isEmpty()) return false
         pendingAudioUris = filtered
+        lastLoadedIsVideo = filtered.any { u ->
+            val t = contentResolver.getType(u) ?: ""
+            t.startsWith("video") || videoExt.containsMatchIn(queryDisplayName(u))
+        }
         return true
     }
 
@@ -231,6 +237,7 @@ class MainActivity : Activity() {
                     "window.DSKLoadFolder && window.DSKLoadFolder(" +
                             org.json.JSONObject.quote(arr.toString()) + ", 0);", null
                 )
+                webView.evaluateJavascript("window.DSKVideoLoaded && window.DSKVideoLoaded($lastLoadedIsVideo);", null)
             }
         }
     }
@@ -394,7 +401,8 @@ class MainActivity : Activity() {
                         if (n < 0 || n >= folderUris.size) return errorResponse()
                         val uri = folderUris[n]
                         val stream = contentResolver.openInputStream(uri) ?: return errorResponse()
-                        val mime = contentResolver.getType(uri) ?: "audio/*"
+                        val rawMime = contentResolver.getType(uri) ?: "audio/*"
+                        val mime = if (rawMime.startsWith("video/")) videoToAudioMime(rawMime) else rawMime
                         val headers = HashMap<String, String>()
                         headers["Access-Control-Allow-Origin"] = "*"
                         headers["Cache-Control"] = "no-store"
@@ -417,7 +425,8 @@ class MainActivity : Activity() {
                         safUri = Uri.parse(uriStr)
                         val stream = contentResolver.openInputStream(safUri)
                         if (stream != null) {
-                            val mime = contentResolver.getType(safUri) ?: "audio/*"
+                            val rawMime = contentResolver.getType(safUri) ?: "audio/*"
+                            val mime = if (rawMime.startsWith("video/")) videoToAudioMime(rawMime) else rawMime
                             val headers = HashMap<String, String>()
                             headers["Access-Control-Allow-Origin"] = "*"
                             headers["Cache-Control"] = "no-store"
@@ -911,6 +920,8 @@ class MainActivity : Activity() {
 
         if (requestCode == REQUEST_PICK_AUDIO) {
             if (resultCode == RESULT_OK && data?.data != null) {
+                val pickedMime = contentResolver.getType(data.data!!) ?: ""
+                lastLoadedIsVideo = pickedMime.startsWith("video")
                 handlePickedAudio(data.data!!)
             }
             return
@@ -1259,7 +1270,8 @@ class MainActivity : Activity() {
                 try {
                     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
                     intent.addCategory(Intent.CATEGORY_OPENABLE)
-                    intent.type = "audio/*"
+                    intent.type = "*/*"
+                    intent.putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("audio/*", "video/*"))
                     intent.putExtra("android.content.extra.SHOW_ADVANCED", true)
                     startActivityForResult(intent, REQUEST_PICK_AUDIO)
                 } catch (e: Exception) {
@@ -1679,7 +1691,7 @@ class MainActivity : Activity() {
                 )
             } catch (e: Exception) {}
 
-            val audioExt = Regex("\\.(mp3|wav|ogg|opus|flac|m4a|aac|webm|mid|midi)$", RegexOption.IGNORE_CASE)
+            val audioExt = Regex("\\.(mp3|wav|ogg|opus|flac|m4a|aac|webm|mid|midi|mp4|m4v|mkv|mov|avi|3gp|3g2)$", RegexOption.IGNORE_CASE)
 
             // ---------- Estrategia A: SAF tree ----------
             var uris = ArrayList<Uri>()
@@ -1715,8 +1727,8 @@ class MainActivity : Activity() {
                                 val cid = if (di >= 0) c.getString(di) else continue
                                 val nm = if (ni >= 0) c.getString(ni) ?: "" else ""
                                 val mime = if (mi >= 0) c.getString(mi) ?: "" else ""
-                                val isAudio = mime.startsWith("audio") || audioExt.containsMatchIn(nm)
-                                if (!isAudio) continue
+                                val isMedia = mime.startsWith("audio") || mime.startsWith("video") || audioExt.containsMatchIn(nm)
+                                if (!isMedia) continue
                                 val cu = DocumentsContract.buildDocumentUri(authority, cid)
                                 pairs.add(Pair(nm, cu))
                             }
@@ -1854,6 +1866,7 @@ class MainActivity : Activity() {
                     "window.DSKLoadFolderUris ? window.DSKLoadFolderUris(" + org.json.JSONObject.quote(itemsStr) + ", $si) : " +
                             "(window.DSKLoadFolder && window.DSKLoadFolder(" + org.json.JSONObject.quote(payload) + ", $si));", null
                 )
+                webView.evaluateJavascript("window.DSKVideoLoaded && window.DSKVideoLoaded($lastLoadedIsVideo);", null)
             }
         } catch (e: Exception) {
             runOnUiThread { Toast.makeText(this@MainActivity, "Error al leer la carpeta: ${e.message}", Toast.LENGTH_LONG).show() }
@@ -2142,6 +2155,14 @@ class MainActivity : Activity() {
             }
             n
         } catch (e: Exception) { "" }
+    }
+
+    // Convierte MIME de vídeo a su equivalente de audio para que el <audio> del WebView
+    // pueda reproducir el contenedor sin la pista de vídeo.
+    private fun videoToAudioMime(videoMime: String): String = when (videoMime) {
+        "video/webm"              -> "audio/webm"
+        "video/3gpp", "video/3gpp2" -> "audio/3gpp"
+        else                      -> "audio/mp4"
     }
 
     // Detecta el contenedor real de un audio por sus primeros bytes (no por la

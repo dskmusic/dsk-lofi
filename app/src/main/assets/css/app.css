@@ -1657,6 +1657,11 @@
       display: none !important;
     }
 
+    /* cuando se abre un vídeo en modo reproductor, mostrar la sección de exportar */
+    body.player-only.has-video .fx[data-plain="export"] {
+      display: block !important;
+    }
+
     /* barra de seek (solo modo reproductor) */
     .po-seek {
       display: flex; align-items: center; gap: var(--space-2);

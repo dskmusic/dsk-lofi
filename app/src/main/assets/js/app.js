@@ -1150,6 +1150,17 @@
     }
   };
 
+  /* Llamado desde Kotlin cuando el archivo cargado es un vídeo (isVideo=true) o
+     no lo es (isVideo=false). Muestra u oculta la sección de exportar en modo
+     reproductor, donde normalmente está oculta. */
+  window.DSKVideoLoaded = function (isVideo) {
+    document.body.classList.toggle("has-video", !!isVideo);
+    if (isVideo) {
+      const exp = document.querySelector('[data-plain="export"]');
+      if (exp) setTimeout(function () { exp.scrollIntoView({ behavior: "smooth", block: "start" }); }, 400);
+    }
+  };
+
   /* el Kotlin pregunta al arrancar si hay cola guardada para restaurar.
      Devuelve JSON {index, pos, shuffle} o "" si no hay. */
   window.DSKGetSavedQueue = function () {
@@ -1737,6 +1748,13 @@
         sizeCanvases();
         setTrackName(track.name.replace(/\.[^.]+$/, ""));
         setArtist("");   // hasta saber si el tag trae intérprete
+        // detectar si el track actual es vídeo por extensión y actualizar has-video
+        // (cubre la navegación dentro de la playlist, no solo la apertura inicial desde Kotlin)
+        const _trackIsVideo = /\.(mp4|m4v|mkv|mov|avi|3gp|3g2)$/i.test(track.name);
+        document.body.classList.toggle("has-video", _trackIsVideo);
+        // pre-rellenar el nombre de exportar con el nombre del track (útil al abrir vídeos)
+        const _expInput = $("#exportName");
+        if (_expInput) _expInput.value = sanitize(track.name.replace(/\.[^.]+$/, "")) + " [DSKLoFi]";
         $("#timeCur").textContent = fmt.time(0);
         peaks = null;   // sin forma de onda decodificada en modo nativo
         abPeakBlob = (!track.ytId && coverBlob instanceof Blob) ? coverBlob : null;  // onda A–B bajo demanda
@@ -2934,7 +2952,17 @@
   }
 
   async function doExport() {
-    if (!Engine.buffer) return;
+    if (!Engine.buffer) {
+      // en modo reproductor el audio se reproduce de forma nativa (sin buffer Web Audio);
+      // decodificar el blob del track ahora para poder exportar el vídeo como MP3/WAV
+      if (!playerOnlyMode || !abPeakBlob) return;
+      try {
+        const ab = await abPeakBlob.arrayBuffer();
+        const buf = await Engine.decode(ab);
+        Engine.setBuffer(buf, playlist[plIndex] ? playlist[plIndex].name : "track");
+      } catch (e) { return; }
+      if (!Engine.buffer) return;
+    }
     const name = sanitize($("#exportName").value || "dsk-lofi");
     let format = exportFormat;
     if (format === "mp3" && !Encoder.mp3Ready) {
@@ -2990,6 +3018,7 @@
       exporting = false;
       UI.closeModal("exportModal");
       UI.toast(I18n.t(mode === "bridge" ? "ex_done_bridge" : "ex_done_web"), "ok");
+      document.body.classList.remove("has-video");
     } catch (err) {
       exporting = false;
       UI.closeModal("exportModal");
