@@ -1,7 +1,6 @@
 # DSK•LoFi 🎧
 
 ![Version 1.0](https://img.shields.io/badge/version-1.0-blue)
-![Platform](https://img.shields.io/badge/platform-VST3%20%7C%20Standalone-green)
 ![Language](https://img.shields.io/badge/language-JavaScript-yellow)
 ![Language](https://img.shields.io/badge/language-HTML5-orange)
 ![Platform](https://img.shields.io/badge/platform-Android-3DDC84)
