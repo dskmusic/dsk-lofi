@@ -68,5 +68,6 @@ Built by [DSK Music](https://dskmusic.com) — free tools for musicians since 20
 Download the latest APK from the [Releases](../../releases) page. The app checks for updates automatically — or check manually from **Settings → Check for updates**.
 
 ---
+*Developed by DSK Music.*
 
 *Made with ❤️ in Gran Canaria, Spain.*
